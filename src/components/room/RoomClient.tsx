@@ -68,7 +68,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
-                            <MoreVertical />
+                            <MoreVertical className="h-6 w-6"/>
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="bg-card/80 backdrop-blur-lg">
