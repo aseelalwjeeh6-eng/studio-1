@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, LogIn, Loader2, Users, DoorOpen } from 'lucide-react';
+import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard } from 'lucide-react';
 import useUserSession from '@/hooks/use-user-session';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, goOnline } from 'firebase/database';
 import Hearts from '@/components/shared/Hearts';
 import { createRoom } from '@/lib/firebase-service';
-import { v4 as uuidv4 } from 'uuid';
 
 interface RoomData {
   id: string;
@@ -62,21 +61,21 @@ export default function LobbyPage() {
     return () => off(roomsRef, 'value', listener);
   }, []);
 
-  const handleCreateRoom = async () => {
+  const handleGoToMyRoom = async () => {
     if (!user || isCreatingRoom) return;
     
     setIsCreatingRoom(true);
     
-    const newRoomId = uuidv4();
-    router.push(`/rooms/${newRoomId}`);
+    const userRoomId = user.name;
+    router.push(`/rooms/${userRoomId}`);
     
     try {
       await createRoom({
         hostName: user.name,
-        roomId: newRoomId,
+        roomId: userRoomId,
       });
     } catch (error) {
-      console.error("Failed to create room:", error);
+      console.error("Failed to create/go to room:", error);
       // Optionally show a toast message to the user and redirect back
       router.push('/lobby');
       setIsCreatingRoom(false);
@@ -107,7 +106,7 @@ export default function LobbyPage() {
             ردهة السينما
           </h1>
           <p className="mt-4 text-lg text-muted-foreground drop-shadow-md">
-            أنشئ غرفة مشاهدة أو انضم إلى أصدقائك.
+            اذهب إلى غرفتك الخاصة أو انضم إلى أصدقائك.
           </p>
         </div>
 
@@ -116,21 +115,21 @@ export default function LobbyPage() {
                 <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                        <PlusCircle className="text-accent" />
-                        <span>إنشاء غرفة جديدة</span>
+                        <Clapperboard className="text-accent" />
+                        <span>غرفتي الخاصة</span>
                         </CardTitle>
                         <CardDescription>
-                        أنشئ غرفة مشاهدة عامة ودعُ أصدقائك.
+                        اذهب إلى غرفتك الخاصة ودعُ أصدقائك.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Button onClick={handleCreateRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
+                        <Button onClick={handleGoToMyRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
                         {isCreatingRoom ? (
                             <Loader2 className="me-2 h-5 w-5 animate-spin" />
                         ) : (
-                            <PlusCircle className="me-2 h-5 w-5" />
+                            <DoorOpen className="me-2 h-5 w-5" />
                         )}
-                         إنشاء غرفة
+                         الذهاب إلى غرفتي
                         </Button>
                     </CardContent>
                 </Card>

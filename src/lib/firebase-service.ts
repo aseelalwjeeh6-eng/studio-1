@@ -291,17 +291,20 @@ type CreateRoomInput = {
 
 export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise<void> => {
     const roomRef = ref(database, `rooms/${roomId}`);
-    
-    const roomData = {
-      host: hostName,
-      createdAt: serverTimestamp(),
-      videoUrl: '',
-      backgroundUrl: '',
-      seatedMembers: {},
-      members: {},
-      moderators: [],
-      playlist: {},
-    };
+    const snapshot = await get(roomRef);
 
-    await set(roomRef, roomData);
+    // Only create the room if it doesn't already exist.
+    if (!snapshot.exists()) {
+        const roomData = {
+          host: hostName,
+          createdAt: serverTimestamp(),
+          videoUrl: '',
+          backgroundUrl: '',
+          seatedMembers: {},
+          members: {},
+          moderators: [],
+          playlist: {},
+        };
+        await set(roomRef, roomData);
+    }
 };
