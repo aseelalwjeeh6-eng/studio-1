@@ -22,14 +22,14 @@ export const BackButtonExitGuard = () => {
                     clearTimeout(resetTimeout.current);
                 }
 
-                if (clickCount.current >= 4) {
+                if (clickCount.current >= 3) {
                     toast.dismiss();
                     // Allow the native back action to proceed, which might exit the PWA
                     window.history.back();
                 } else {
-                     toast(`اضغط ${4 - clickCount.current} مرات أخرى للخروج`, {
+                     toast(`اضغط ${3 - clickCount.current} مرات أخرى للخروج`, {
                         id: 'exit-toast',
-                        duration: 3000,
+                        duration: 2000,
                      });
                      
                      // Push a state to "catch" the back button press
@@ -38,7 +38,7 @@ export const BackButtonExitGuard = () => {
                     resetTimeout.current = setTimeout(() => {
                         clickCount.current = 0;
                         toast.dismiss('exit-toast');
-                    }, 3000);
+                    }, 2000);
                 }
             } else {
                  // For other pages, allow normal back navigation
