@@ -6,7 +6,7 @@ import { database } from '@/lib/firebase';
 import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, off, Unsubscribe, remove, push } from 'firebase/database';
 import useUserSession from '@/hooks/use-user-session';
 import Player from './Player';
-import Chat, { Message } from './Chat';
+import { ChatMessages, ChatInput, ChatHeader, Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
 import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check } from 'lucide-react';
@@ -124,9 +124,9 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMembersRef: React.MutableRefObject<SeatedMember[]> }) => {
+const RoomLayout = ({ roomId, user }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>}) => {
   const router = useRouter();
-  const { user, isLoaded: isUserLoaded } = useUserSession();
+  
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
@@ -171,7 +171,6 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
   }, [allMembers, seatedMembers]);
 
   const isSeated = useMemo(() => {
-    if (!user) return false;
     return seatedMembers.some(m => m.name === user.name);
   }, [seatedMembers, user]);
   
@@ -183,7 +182,6 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
   const [friendData, setFriendData] = useState<{ friends: AppUser[]; requests: AppUser[] }>({ friends: [], requests: [] });
 
   useEffect(() => {
-    if (!user) return;
     const fetchFriendData = async () => {
         const [friendsList, requestsList] = await Promise.all([
             getFriends(user.name),
@@ -200,8 +198,6 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
   };
   
   useEffect(() => {
-    if (!isUserLoaded || !user) return;
-
     let isMounted = true;
     const listeners: Unsubscribe[] = [];
 
@@ -226,7 +222,6 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
         listeners.push(onValue(seatedMembersRefDb, (snapshot) => {
             const seatedData = snapshot.val();
             const seatedArray = seatedData ? Object.values(seatedData) : [];
-            seatedMembersRef.current = seatedArray as SeatedMember[];
             setSeatedMembers(seatedArray as SeatedMember[]);
         }));
         
@@ -258,7 +253,7 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
         isMounted = false;
         listeners.forEach(unsubscribe => unsubscribe());
     };
-}, [isUserLoaded, user, roomId, router, seatedMembersRef]);
+}, [roomId, router]);
 
   useEffect(() => {
       if(typeof window !== 'undefined') {
@@ -285,7 +280,7 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
 
 
   useEffect(() => {
-    if (user && isSeated) {
+    if (isSeated) {
         const currentUserSeat = seatedMembers.find(m => m.name === user.name);
         if (currentUserSeat) {
             const updates: { [key: string]: any } = {};
@@ -298,9 +293,8 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
   }, [user?.avatarId, isSeated, roomId, user, seatedMembers]);
     
   const handleTakeSeat = (seatId: number) => {
-      if (!user) return;
       const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${seatId}`);
-      const currentUserSeat = seatedMembersRef.current.find(m => m.name === user.name);
+      const currentUserSeat = seatedMembers.find(m => m.name === user.name);
 
       runTransaction(seatRef, (currentData) => {
           if (currentData === null) {
@@ -322,8 +316,7 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
   };
 
   const handleLeaveSeat = () => {
-      if (!user) return;
-      const currentUserSeat = seatedMembersRef.current.find(m => m.name === user.name);
+      const currentUserSeat = seatedMembers.find(m => m.name === user.name);
       if (currentUserSeat) {
           const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}`);
           set(seatRef, null).then(() => {
@@ -333,7 +326,7 @@ const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMember
   };
 
   const handleToggleMute = () => {
-    if (isSeated && user) {
+    if (isSeated) {
         const participant = [localParticipant, ...participants].find(p => p.identity === user.name);
         if (participant) {
             const isEnabled = participant.isMicrophoneEnabled;
@@ -515,7 +508,6 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
   };
   
   const handleOpenInviteDialog = async () => {
-    if (!user) return;
     try {
       const friendsData = await getFriends(user.name);
       setFriends(friendsData);
@@ -527,7 +519,6 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
   };
 
   const handleSendInvitation = async (recipientName: string) => {
-    if (!user) return;
     try {
         await sendRoomInvitation(user.name, recipientName, roomId, `غرفة ${hostName}`);
         setInvitedFriends(prev => new Set(prev).add(recipientName));
@@ -586,14 +577,6 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
     setVideoMode(mode);
   }
 
-  if (!isUserLoaded || !user) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-16 w-16 animate-spin text-accent" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-screen w-full bg-background items-center">
         {roomBackground && (
@@ -626,8 +609,8 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                      <VideoConference />
                    </div>
                 ) : (
-                    <div className="flex-grow flex flex-col gap-4 min-h-0">
-                        <div className="flex items-center justify-center">
+                    <div className="w-full flex-grow flex flex-col gap-4 min-h-0">
+                        <div className="flex-shrink-0">
                             <Player 
                                 videoUrl={videoUrl} 
                                 onSetVideo={onSetVideo} 
@@ -659,14 +642,17 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                          <div className="flex-shrink-0">
                             <ViewerInfo members={viewers} />
                          </div>
+                         <div className="flex-grow min-h-0 bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
+                           <ChatHeader isHost={isHost} roomId={roomId} />
+                           <ChatMessages roomId={roomId} user={user} />
+                         </div>
                     </div>
                 )}
             </main>
             <div className="w-full mt-auto">
-                 <Chat 
+                 <ChatInput
                     roomId={roomId} 
                     user={user} 
-                    isHost={isHost}
                     isSeated={isSeated}
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
@@ -945,7 +931,8 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
     const seatedListener = onValue(seatedMembersRefDb, (snapshot) => {
         const seatedData = snapshot.val();
-        const isCurrentlySeated = seatedData ? Object.values(seatedData).some((member: any) => member.name === user.name) : false;
+        seatedMembersRef.current = seatedData ? Object.values(seatedData) : [];
+        const isCurrentlySeated = seatedMembersRef.current.some((member: any) => member.name === user.name);
         setIsSeated(isCurrentlySeated);
     });
 
@@ -1124,7 +1111,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       isSeated={isSeated}
       videoMode={videoMode}
     >
-      <RoomLayout roomId={roomId} seatedMembersRef={seatedMembersRef} />
+      <RoomLayout roomId={roomId} user={user} />
     </LiveKitRoom>
   );
 };
