@@ -273,13 +273,15 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
   const sendSystemMessage = useCallback((text: string) => {
     if (!roomId) return;
     const chatRef = ref(database, `rooms/${roomId}/chat`);
+    const newMsgRef = push(chatRef);
     const messageData: Message = {
+      id: newMsgRef.key!,
       sender: 'System',
       text, // No user name prefix needed as it's passed from caller
       timestamp: Date.now(),
       isSystemMessage: true,
     };
-    push(chatRef, messageData);
+    set(newMsgRef, messageData);
   }, [roomId]);
 
 
@@ -462,7 +464,7 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
 
     const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
     set(playlistRef, newItem);
-    alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
+alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
     setUrlInput('');
   };
 
@@ -594,7 +596,7 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
   }
 
   return (
-    <div className="relative flex flex-col h-screen w-full bg-background items-center">
+    <div className="flex flex-col h-screen w-full bg-background items-center">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -661,10 +663,7 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
                     </div>
                 )}
             </main>
-            <div className={cn(
-                "w-full flex-shrink-0",
-                videoMode ? "h-1/3" : "h-2/5"
-            )}>
+            <div className="w-full flex-shrink-0">
                  <Chat 
                     roomId={roomId} 
                     user={user} 
@@ -923,13 +922,15 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   const sendSystemMessage = useCallback((text: string) => {
     if (!roomId || !user) return;
     const chatRef = ref(database, `rooms/${roomId}/chat`);
+    const newMsgRef = push(chatRef);
     const messageData: Message = {
+      id: newMsgRef.key!,
       sender: 'System',
       text,
       timestamp: Date.now(),
       isSystemMessage: true,
     };
-    push(chatRef, messageData);
+    set(newMsgRef, messageData);
   }, [roomId, user]);
 
   useEffect(() => {
@@ -982,6 +983,8 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         }
         
         const currentHost = roomSnapshot.val().host;
+        const currentMembers: Member[] = Object.values(roomSnapshot.val().members || {});
+        const isReturning = currentMembers.some(m => m.name === user.name);
 
         // Setup presence and fetch LiveKit token in parallel
         const presencePromise = (async () => {
@@ -989,6 +992,9 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             const memberData = { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() };
             await set(memberRef, memberData);
             
+            if(!isReturning){
+              sendSystemMessage(`${user.name} انضم إلى الغرفة`);
+            }
 
             const disconnectRef = onDisconnect(memberRef);
             disconnectRef.remove();
@@ -1059,8 +1065,9 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     setupRoom();
 
     const handleBeforeUnload = () => {
-      // This is a synchronous operation, so we can't reliably use async operations here.
-      // The onDisconnect setup should handle the cleanup.
+        // The onDisconnect setup should handle the cleanup.
+        // We can add a system message here, but it's not guaranteed to send.
+        goOffline(database);
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -1069,15 +1076,26 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         isMounted = false;
         window.removeEventListener('beforeunload', handleBeforeUnload);
         
-        // Cleanup on component unmount (e.g., navigating away)
-        const memberRefOnUnmount = ref(database, `rooms/${roomId}/members/${user.name}`);
-        remove(memberRefOnUnmount);
-
-        goOffline(database);
+        // This cleanup is for when the component unmounts cleanly (e.g., navigating away)
+        // NOT for page reloads.
+        if (user) {
+            const memberRefOnUnmount = ref(database, `rooms/${roomId}/members/${user.name}`);
+            const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
+            
+            remove(memberRefOnUnmount);
+            if (userSeat) {
+                const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`);
+                remove(seatRef);
+            }
+            sendSystemMessage(`${user.name} غادر الغرفة`);
+        }
         
+        // Cancel all onDisconnect operations when leaving gracefully
         onDisconnect(memberRef).cancel();
         onDisconnect(hostRef).cancel();
         onDisconnect(ref(database, `rooms/${roomId}`)).cancel();
+
+        goOffline(database);
     };
 }, [isUserLoaded, user, roomId, router, sendSystemMessage]);
 

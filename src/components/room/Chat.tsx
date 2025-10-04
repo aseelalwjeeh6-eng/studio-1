@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { cn } from '@/lib/utils';
 
 interface ChatProps {
   roomId: string;
@@ -29,6 +30,7 @@ interface ChatProps {
 }
 
 export interface Message {
+  id: string;
   sender: string;
   text: string;
   timestamp: number;
@@ -63,12 +65,14 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
     setIsSending(true);
     try {
         const chatRef = ref(database, `rooms/${roomId}/chat`);
+        const newMsgRef = push(chatRef);
         const messageData: Message = {
+            id: newMsgRef.key!,
             sender: user.name,
             text: newMessage,
             timestamp: Date.now(),
         };
-        await push(chatRef, messageData);
+        await set(newMsgRef, messageData);
         setNewMessage('');
     } catch(error) {
         console.error("Error sending message:", error);
@@ -84,7 +88,7 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
 
   return (
     <div className="flex flex-col h-full w-full bg-card/50 backdrop-blur-lg rounded-t-lg">
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
             <h2 className="text-lg font-semibold flex items-center gap-2"><MessageCircle className="text-accent" /><span>الدردشة</span></h2>
             {isHost && (
               <AlertDialog>
@@ -112,27 +116,39 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
             )}
         </div>
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-        {messages.length > 0 ? messages.map((msg, index) => (
-            <div key={index}>
-            {msg.isSystemMessage ? (
-                <p className="text-sm text-muted-foreground italic text-center py-1">
-                    {msg.text}
-                </p>
-            ) : (
-                <div className="flex flex-col">
-                    <span className="font-bold text-sm text-accent">{msg.sender}</span>
-                    <p className="text-md text-foreground break-words">{msg.text}</p>
+        {messages.length > 0 ? messages.map((msg) => {
+            const isCurrentUser = msg.sender === user.name;
+            return (
+                <div key={msg.id}>
+                    {msg.isSystemMessage ? (
+                        <p className="text-sm text-muted-foreground italic text-center py-1">
+                            {msg.text}
+                        </p>
+                    ) : (
+                        <div className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
+                            {!isCurrentUser && (
+                                <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
+                            )}
+                             <div className={cn(
+                                "max-w-xs md:max-w-md p-3 rounded-2xl",
+                                isCurrentUser 
+                                    ? "bg-primary text-primary-foreground rounded-br-none" 
+                                    : "bg-secondary text-secondary-foreground rounded-bl-none"
+                            )}>
+                                <p className="text-md text-foreground break-words">{msg.text}</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            )}
-            </div>
-        )) : (
+            )
+        }) : (
             <div className="flex h-full items-center justify-center text-muted-foreground">
                 <p>لا توجد رسائل بعد. ابدأ المحادثة!</p>
             </div>
         )}
         <div ref={chatEndRef} />
         </div>
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border flex-shrink-0">
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
             {isSeated && (
                 <Button type="button" size="icon" variant="ghost" onClick={onToggleMute}>
