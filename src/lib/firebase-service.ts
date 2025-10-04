@@ -1,3 +1,4 @@
+
 import { database } from './firebase';
 import type { Database } from 'firebase/database';
 import {
@@ -13,6 +14,16 @@ import {
   remove,
 } from 'firebase/database';
 import { v4 as uuidv4 } from 'uuid';
+
+// A simple (and not cryptographically secure) hashing function for demonstration.
+// In a real-world app, use a library like bcryptjs.
+const simpleHash = async (password: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
 export interface RoomInvitation {
   id: string;
@@ -32,6 +43,10 @@ export interface FriendRequest {
 
 export interface AppUser {
   name: string;
+  password?: string; // Hashed password
+  age?: number;
+  gender?: 'male' | 'female';
+  dob?: string; // Date of birth
   avatarId?: string;
   friends?: { [key: string]: boolean }; // Using object for easier add/remove
   friendRequests?: { [key: string]: FriendRequest };
@@ -49,17 +64,65 @@ export const getUserData = async (username: string): Promise<AppUser | null> => 
   return snapshot.exists() ? snapshot.val() : null;
 };
 
+export const registerUser = async (userData: AppUser): Promise<AppUser> => {
+    const { name, password } = userData;
+    if (!name || !password) throw new Error("الاسم وكلمة المرور مطلوبان.");
+
+    const userRef = getUserRef(database, name);
+    const snapshot = await get(userRef);
+    if (snapshot.exists()) {
+        throw new Error("هذا الاسم مستخدم بالفعل.");
+    }
+    
+    const hashedPassword = await simpleHash(password);
+    const newUser: AppUser = {
+        ...userData,
+        password: hashedPassword,
+    };
+
+    await set(userRef, newUser);
+    // Return user data without password for session
+    const { password: _password, ...userToReturn } = newUser;
+    return userToReturn;
+};
+
+export const loginUser = async (name: string, password_raw: string): Promise<AppUser> => {
+    const userRef = getUserRef(database, name);
+    const snapshot = await get(userRef);
+    if (!snapshot.exists()) {
+        throw new Error("الاسم أو كلمة المرور غير صحيحة.");
+    }
+
+    const userData = snapshot.val() as AppUser;
+    if (!userData.password) {
+        throw new Error("حساب المستخدم هذا قديم ولا يحتوي على كلمة مرور. يرجى إنشاء حساب جديد.");
+    }
+
+    const hashedPassword = await simpleHash(password_raw);
+    if (userData.password !== hashedPassword) {
+        throw new Error("الاسم أو كلمة المرور غير صحيحة.");
+    }
+
+    // Return user data without password for session
+    const { password, ...userToReturn } = userData;
+    return userToReturn;
+};
+
+
 export const upsertUser = async (user: { name: string, avatarId?: string, newAvatar?: any }) => {
   const userRef = getUserRef(database, user.name);
   const snapshot = await get(userRef);
 
   if (!snapshot.exists()) {
+    // This path is for old users who login without a password for the first time.
+    // New registrations are handled by `registerUser`.
     await set(userRef, {
       name: user.name,
       avatarId: user.avatarId || 'avatar1',
       generatedAvatars: user.newAvatar ? [user.newAvatar] : []
     });
   } else {
+    // This is for updating existing users (avatar, etc.)
     const updates: any = {};
     if (user.avatarId) {
       updates.avatarId = user.avatarId;
@@ -242,5 +305,3 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
 
     await set(roomRef, roomData);
 };
-
-    
