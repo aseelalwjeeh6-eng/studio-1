@@ -6,7 +6,8 @@ import { database } from '@/lib/firebase';
 import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, off, Unsubscribe, remove, push } from 'firebase/database';
 import useUserSession from '@/hooks/use-user-session';
 import Player from './Player';
-import { ChatMessages, ChatInput, ChatHeader, Message } from './Chat';
+import { ChatMessages, ChatInput, ChatHeader } from './Chat';
+import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
 import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check } from 'lucide-react';
@@ -885,7 +886,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   const router = useRouter();
   const { user, isLoaded: isUserLoaded } = useUserSession();
   const [token, setToken] = useState('');
-  const seatedMembersRef = useRef<SeatedMember[]>([]); // Moved from RoomLayout
+  const seatedMembersRef = useRef<SeatedMember[]>([]);
   
   const [isSeated, setIsSeated] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
@@ -907,10 +908,10 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   useEffect(() => {
     if (!isUserLoaded || !user) return;
 
-    const seatedMembersRefDb = ref(database, `rooms/${roomId}/seatedMembers`);
+    const seatedMembersDbRef = ref(database, `rooms/${roomId}/seatedMembers`);
     const videoModeRef = ref(database, `rooms/${roomId}/videoMode`);
 
-    const seatedListener = onValue(seatedMembersRefDb, (snapshot) => {
+    const seatedListener = onValue(seatedMembersDbRef, (snapshot) => {
         const seatedData = snapshot.val();
         seatedMembersRef.current = seatedData ? Object.values(seatedData) : [];
         const isCurrentlySeated = seatedMembersRef.current.some((member: any) => member.name === user.name);
@@ -922,7 +923,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     });
     
     return () => {
-        off(seatedMembersRefDb, 'value', seatedListener);
+        off(seatedMembersDbRef, 'value', seatedListener);
         off(videoModeRef, 'value', videoModeListener);
     }
   }, [isUserLoaded, user, roomId, router]);

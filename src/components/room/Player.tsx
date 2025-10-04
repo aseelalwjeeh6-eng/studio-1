@@ -84,7 +84,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [videoAspectRatio, setVideoAspectRatio] = useState<string | undefined>(undefined);
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | null>(null);
@@ -271,7 +270,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
     setDuration(event.target.getDuration());
-    setVideoAspectRatio(undefined);
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         event.target.seekTo(initialSeekTime, true);
@@ -296,10 +294,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
     setDuration(htmlPlayerRef.current.duration);
-    const { videoWidth, videoHeight } = e.currentTarget;
-    if (videoWidth && videoHeight) {
-      setVideoAspectRatio(`${videoWidth} / ${videoHeight}`);
-    }
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         htmlPlayerRef.current.currentTime = initialSeekTime;
@@ -421,7 +415,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       >
         <div></div>
 
-        <div className="flex items-center justify-center gap-8">
+        <div className="flex items-center justify-center">
             <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-20 h-20">
                 {playerState?.isPlaying ? <Pause className="w-12 h-12" /> : <Play className="w-12 h-12" />}
             </Button>
@@ -443,9 +437,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   return (
     <div 
-        className="w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative"
-        style={{ aspectRatio: videoAspectRatio ?? '16 / 9' }}
-        onMouseMove={handlePlayerClick}
+        className="w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative aspect-video"
+        onMouseMove={() => {
+            if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+            setShowControls(true);
+            controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+        }}
         onClick={handlePlayerClick}
         onMouseLeave={() => {
             if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
