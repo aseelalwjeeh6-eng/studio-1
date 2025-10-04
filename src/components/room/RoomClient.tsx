@@ -62,7 +62,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     const avatar = PlaceHolderImages.find(p => p.id === user?.avatarId) ?? PlaceHolderImages[0];
 
     return (
-        <header className="flex items-center justify-between p-4 w-full">
+        <header className="flex items-center justify-between p-4 w-full flex-shrink-0">
             <div className="flex items-center gap-2">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -619,14 +619,14 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
                 onBackgroundClick={() => setIsBackgroundOpen(true)}
                 canControl={canControl}
             />
-            <main className="w-full max-w-7xl mx-auto flex-grow grid grid-cols-1 md:grid-cols-3 gap-4 px-4 pb-4 min-h-0">
+            <main className="w-full max-w-7xl mx-auto flex-grow flex flex-col gap-4 px-4 pb-4 min-h-0">
                 {videoMode ? (
-                   <div className="md:col-span-3 rounded-lg overflow-hidden h-full">
+                   <div className="flex-grow rounded-lg overflow-hidden h-full">
                      <VideoConference />
                    </div>
                 ) : (
-                    <div className="md:col-span-3 flex flex-col gap-4 min-h-0">
-                        <div className="flex-grow flex items-center justify-center">
+                    <div className="flex-grow flex flex-col gap-4 min-h-0">
+                        <div className="flex-grow flex items-center justify-center min-h-0">
                             <Player 
                                 videoUrl={videoUrl} 
                                 onSetVideo={onSetVideo} 
@@ -637,34 +637,43 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
                                 onVideoEnded={handleVideoEnded}
                             />
                         </div>
-                         <Seats 
-                            seatedMembers={seatedMembers}
-                            hostName={hostName}
-                            moderators={moderators}
-                            onTakeSeat={handleTakeSeat}
-                            onLeaveSeat={handleLeaveSeat}
-                            currentUser={user}
-                            isHost={isHost}
-                            onKickUser={handleKickUser}
-                            onPromote={handlePromote}
-                            onDemote={handleDemote}
-                            onTransferHost={handleTransferHost}
-                            room={room}
-                            currentUserFriends={friendData.friends}
-                            currentUserRequests={friendData.requests}
-                        />
-                        <ViewerInfo members={viewers} />
-                        <Chat 
-                            roomId={roomId} 
-                            user={user} 
-                            isHost={isHost}
-                            isSeated={isSeated}
-                            isMuted={isMuted}
-                            onToggleMute={handleToggleMute}
-                        />
+                        <div className="flex-shrink-0">
+                             <Seats 
+                                seatedMembers={seatedMembers}
+                                hostName={hostName}
+                                moderators={moderators}
+                                onTakeSeat={handleTakeSeat}
+                                onLeaveSeat={handleLeaveSeat}
+                                currentUser={user}
+                                isHost={isHost}
+                                onKickUser={handleKickUser}
+                                onPromote={handlePromote}
+                                onDemote={handleDemote}
+                                onTransferHost={handleTransferHost}
+                                room={room}
+                                currentUserFriends={friendData.friends}
+                                currentUserRequests={friendData.requests}
+                            />
+                        </div>
+                         <div className="flex-shrink-0">
+                            <ViewerInfo members={viewers} />
+                         </div>
                     </div>
                 )}
             </main>
+            <div className={cn(
+                "w-full flex-shrink-0",
+                videoMode ? "h-1/3" : "h-2/5"
+            )}>
+                 <Chat 
+                    roomId={roomId} 
+                    user={user} 
+                    isHost={isHost}
+                    isSeated={isSeated}
+                    isMuted={isMuted}
+                    onToggleMute={handleToggleMute}
+                />
+            </div>
         </div>
          <div className="hidden">
             <AudioConference />

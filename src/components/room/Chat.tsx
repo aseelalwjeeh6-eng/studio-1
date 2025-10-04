@@ -83,8 +83,8 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-card/50 backdrop-blur-lg rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full w-full bg-card/50 backdrop-blur-lg rounded-t-lg">
+        <div className="flex items-center justify-between p-4 border-b border-border">
             <h2 className="text-lg font-semibold flex items-center gap-2"><MessageCircle className="text-accent" /><span>الدردشة</span></h2>
             {isHost && (
               <AlertDialog>
@@ -111,7 +111,7 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
               </AlertDialog>
             )}
         </div>
-        <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+        <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.length > 0 ? messages.map((msg, index) => (
             <div key={index}>
             {msg.isSystemMessage ? (
@@ -132,24 +132,26 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
         )}
         <div ref={chatEndRef} />
         </div>
-        <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2 mt-4">
-           {isSeated && (
-            <Button type="button" size="icon" variant="ghost" onClick={onToggleMute}>
-              {isMuted ? <MicOff className="w-5 h-5 text-destructive" /> : <Mic className="w-5 h-5 text-accent" />}
+        <div className="p-4 border-t border-border">
+            <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+            {isSeated && (
+                <Button type="button" size="icon" variant="ghost" onClick={onToggleMute}>
+                {isMuted ? <MicOff className="w-5 h-5 text-destructive" /> : <Mic className="w-5 h-5 text-accent" />}
+                </Button>
+            )}
+            <Input
+                type="text"
+                placeholder="اكتب رسالتك..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
+                disabled={isSending}
+            />
+            <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
+                <Send className="h-4 w-4" />
             </Button>
-          )}
-          <Input
-            type="text"
-            placeholder="اكتب رسالتك..."
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
-            disabled={isSending}
-          />
-          <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+            </form>
+        </div>
     </div>
   );
 };
