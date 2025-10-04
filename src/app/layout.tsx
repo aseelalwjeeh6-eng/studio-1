@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils';
 import { AppProviders } from '@/app/providers';
 import Hearts from '@/components/shared/Hearts';
 import Script from 'next/script';
+import { Toaster } from 'react-hot-toast';
+import { BackButtonExitGuard } from '@/hooks/useBackButtonExitGuard';
 
 const alegreya = Alegreya({
   subsets: ['latin'],
@@ -40,6 +42,10 @@ export default function RootLayout({
           `}
         </Script>
         <AppProviders>
+          <BackButtonExitGuard />
+          <Toaster toastOptions={{
+            className: 'bg-card text-card-foreground border border-accent/20',
+          }}/>
           <Hearts />
           <main>{children}</main>
         </AppProviders>
