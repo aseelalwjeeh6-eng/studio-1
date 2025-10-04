@@ -14,6 +14,7 @@ import { generateAvatar } from '@/ai/flows/generate-avatar-flow';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AppUser } from '@/lib/firebase-service';
+import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
   const { user, setUser, isLoaded } = useUserSession();
@@ -47,11 +48,16 @@ export default function ProfilePage() {
   const handleUpdateAvatar = (imageToUpdate: ImagePlaceholder) => {
     if (!user || !imageToUpdate) return;
     startAvatarUpdateTransition(async () => {
-      setCurrentAvatarId(imageToUpdate.id);
-      const updatedUser = { ...user, avatarId: imageToUpdate.id };
-      setUser(updatedUser);
-      await upsertUser(updatedUser);
-      alert('تم تحديث الصورة الرمزية بنجاح!');
+      try {
+        setCurrentAvatarId(imageToUpdate.id);
+        const updatedUser = { ...user, avatarId: imageToUpdate.id };
+        setUser(updatedUser);
+        await upsertUser(updatedUser);
+        toast.success('تم تحديث الصورة الرمزية بنجاح!');
+      } catch (error) {
+        toast.error('فشل تحديث الصورة الرمزية.');
+        console.error(error);
+      }
     });
   };
   
@@ -59,13 +65,14 @@ export default function ProfilePage() {
     if (!imageToSet) return;
     document.body.style.setProperty('--app-background-image', `url(${imageToSet.imageUrl})`);
     localStorage.setItem('app-background-image', imageToSet.imageUrl);
-    alert('تم تعيين الخلفية الجديدة!');
+    toast.success('تم تعيين الخلفية الجديدة!');
   };
 
 
   const handleGenerateAvatar = async () => {
     if (!avatarPrompt.trim() || !user) return;
     setIsGenerating(true);
+    const toastId = toast.loading('يتم إنشاء الصورة الرمزية...');
     try {
         const { imageUrl } = await generateAvatar({ prompt: avatarPrompt });
         const newAvatar: ImagePlaceholder = {
@@ -83,11 +90,11 @@ export default function ProfilePage() {
         await upsertUser({ name: user.name, newAvatar: newAvatar });
         
         setAvatarPrompt('');
-        alert("تم إنشاء الصورة الرمزية! يمكنك الآن تعيينها كصورة رمزية أو خلفية.");
+        toast.success("تم إنشاء الصورة الرمزية! يمكنك الآن تعيينها.", { id: toastId });
 
     } catch (error) {
         console.error("Avatar generation failed:", error);
-        alert("فشل إنشاء الصورة. حدث خطأ أثناء محاولة إنشاء صورتك الرمزية. يرجى المحاولة مرة أخرى.");
+        toast.error("فشل إنشاء الصورة. يرجى المحاولة مرة أخرى.", { id: toastId });
     } finally {
         setIsGenerating(false);
     }

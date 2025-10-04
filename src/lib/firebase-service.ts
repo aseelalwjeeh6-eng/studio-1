@@ -25,6 +25,11 @@ const simpleHash = async (password: string): Promise<string> => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+export interface PresenceStatus {
+    status: 'online' | 'offline';
+    lastChanged: number;
+}
+
 export interface RoomInvitation {
   id: string;
   roomId: string;
@@ -184,9 +189,10 @@ export const sendFriendRequest = async (senderName: string, recipientName: strin
         }
     }
 
-    const newRequestRef = push(recipientRequestsRef);
+    const requestId = uuidv4();
+    const newRequestRef = ref(database, `users/${recipientName}/friendRequests/${btoa(requestId)}`);
     const newRequest: FriendRequest = {
-        id: newRequestRef.key!,
+        id: requestId,
         senderName,
         timestamp: Date.now(),
         read: false,
@@ -267,14 +273,20 @@ export const sendRoomInvitation = async (senderName: string, recipientName: stri
     const recipientData = await getUserData(recipientName);
     if (!recipientData) throw new Error('المستخدم الذي تحاول دعوته غير موجود.');
 
-    if (recipientData.invitations && Object.values(recipientData.invitations).some(inv => inv.roomId === roomId)) {
-        throw new Error(`لقد قمت بالفعل بدعوة ${recipientName} إلى هذه الغرفة.`);
+    // Check if a non-expired invitation to the same room already exists
+    if (recipientData.invitations) {
+      const existingInvites = Object.values(recipientData.invitations);
+      const oneHourAgo = Date.now() - 3600 * 1000;
+      const recentInvite = existingInvites.find(inv => inv.roomId === roomId && inv.timestamp > oneHourAgo);
+      if (recentInvite) {
+        throw new Error(`لقد قمت بالفعل بدعوة ${recipientName} إلى هذه الغرفة مؤخرًا.`);
+      }
     }
 
-    const invitationsRef = ref(database, `users/${recipientName}/invitations`);
-    const newInvitationRef = push(invitationsRef);
+    const invitationId = uuidv4();
+    const invitationsRef = ref(database, `users/${recipientName}/invitations/${btoa(invitationId)}`);
     const newInvitation: RoomInvitation = {
-        id: newInvitationRef.key!,
+        id: invitationId,
         roomId,
         roomName,
         senderName,
@@ -283,6 +295,7 @@ export const sendRoomInvitation = async (senderName: string, recipientName: stri
     };
     await set(newInvitationRef, newInvitation);
 };
+
 
 type CreateRoomInput = {
     hostName: string;

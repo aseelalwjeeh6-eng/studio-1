@@ -210,7 +210,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
         if (!isMounted) return;
 
         if (!roomSnapshot.exists()) {
-          alert('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
+          toast.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
           router.push('/lobby');
           return;
         }
@@ -295,7 +295,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
           return; 
       }).catch((error) => {
           console.error("Transaction failed: ", error);
-          alert("المقعد محجوز بالفعل");
+          toast.error("المقعد محجوز بالفعل");
       });
   };
 
@@ -398,7 +398,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
       };
       const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
       set(playlistRef, newItem);
-      alert(`تمت إضافة "${video.snippet.title}" إلى قائمة التشغيل.`);
+      toast.success(`تمت إضافة "${video.snippet.title}" إلى قائمة التشغيل.`);
   };
   
   const handleAddUrlToPlaylist = async (url: string) => {
@@ -438,7 +438,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
 
     const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
     set(playlistRef, newItem);
-alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
+    toast.success(`تمت إضافة فيديو إلى قائمة التشغيل.`);
     setUrlInput('');
   };
 
@@ -486,7 +486,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
         const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`);
         set(seatRef, null);
     }
-    alert(`تم طرد ${userNameToKick}`);
+    toast.success(`تم طرد ${userNameToKick}`);
   };
   
   const handleOpenInviteDialog = async () => {
@@ -497,7 +497,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
       setInvitedFriends(new Set()); // Reset invited state on open
       setIsInviteOpen(true);
     } catch(error) {
-      alert("فشل في جلب قائمة الأصدقاء.");
+      toast.error("فشل في جلب قائمة الأصدقاء.");
     }
   };
 
@@ -506,9 +506,9 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
     try {
         await sendRoomInvitation(user.name, recipientName, roomId, `غرفة ${hostName}`);
         setInvitedFriends(prev => new Set(prev).add(recipientName));
-        alert(`تمت دعوة ${recipientName} إلى الغرفة.`);
+        toast.success(`تمت دعوة ${recipientName} إلى الغرفة.`);
     } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
     }
   };
 
@@ -517,7 +517,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
       const roomRef = ref(database, `rooms/${roomId}/moderators`);
       const newModerators = [...moderators, userName];
       set(roomRef, newModerators);
-      alert(`أصبح ${userName} مشرفًا.`);
+      toast.success(`أصبح ${userName} مشرفًا.`);
   }
 
   const handleDemote = (userName: string) => {
@@ -525,7 +525,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
       const roomRef = ref(database, `rooms/${roomId}/moderators`);
       const newModerators = moderators.filter(mod => mod !== userName);
       set(roomRef, newModerators);
-      alert(`لم يعد ${userName} مشرفًا.`);
+      toast.success(`لم يعد ${userName} مشرفًا.`);
   }
 
   const handleTransferHost = (userName: string) => {
@@ -537,7 +537,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
       updates[`/rooms/${roomId}/moderators`] = newModerators;
 
       update(ref(database), updates);
-      alert(`أصبحت الغرفة الآن ملك ${userName}.`);
+      toast.success(`أصبحت الغرفة الآن ملك ${userName}.`);
   }
 
   const getAvatar = (user: AppUser | Member | SeatedMember) => {
@@ -952,27 +952,39 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     const memberRef = ref(database, `rooms/${roomId}/members/${user.name}`);
     const hostRef = ref(database, `rooms/${roomId}/host`);
 
+    // For Realtime DB presence
+    const presenceRef = ref(database, `presence/${user.name}`);
+    const connectedRef = ref(database, '.info/connected');
+
     const setupRoom = async () => {
         const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
 
         if (!isMounted) return;
         
         if (!roomSnapshot.exists()) {
-            alert('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
+            toast.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
             router.push('/lobby');
             return;
         }
         
-        const currentHost = roomSnapshot.val().host;
-        const currentMembers: Member[] = Object.values(roomSnapshot.val().members || {});
-        const isReturning = currentMembers.some(m => m.name === user.name);
+        const isReturning = roomSnapshot.val().members?.[user.name];
 
         // Setup presence and fetch LiveKit token in parallel
         const presencePromise = (async () => {
-            await goOnline(database);
             const memberData = { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() };
-            await set(memberRef, memberData);
             
+            onValue(connectedRef, (snap) => {
+              if (snap.val() === true) {
+                goOnline(database);
+                set(memberRef, memberData);
+                const disconnectMemberRef = onDisconnect(memberRef);
+                disconnectMemberRef.remove();
+                
+                set(presenceRef, { status: 'online', lastChanged: serverTimestamp() });
+                onDisconnect(presenceRef).set({ status: 'offline', lastChanged: serverTimestamp() });
+              }
+            });
+
             if(!isReturning){
               sendSystemMessage(`${user.name} انضم إلى الغرفة`);
             }
@@ -1022,7 +1034,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             } catch (error) {
                  if (isMounted) {
                     console.error("Error fetching LiveKit token:", error);
-                    alert('فشل في الحصول على رمز الدخول للغرفة الصوتية.');
+                    toast.error('فشل في الحصول على رمز الدخول للغرفة الصوتية.');
                  }
             }
         })();
@@ -1032,7 +1044,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         } catch (error) {
             if (isMounted) {
                 console.error("Error setting up room:", error);
-                alert('فشل في تهيئة الغرفة.');
+                toast.error('فشل في تهيئة الغرفة.');
                 router.push('/lobby');
             }
         }
@@ -1063,6 +1075,11 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             
             onDisconnect(memberRef).cancel();
             onDisconnect(hostRef).cancel();
+            
+            const userPresenceRef = ref(database, `presence/${user.name}`);
+            set(userPresenceRef, { status: 'offline', lastChanged: serverTimestamp() });
+            onDisconnect(userPresenceRef).cancel();
+            onDisconnect(connectedRef).cancel();
         }
         goOffline(database);
     };
@@ -1099,10 +1116,3 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 };
 
 export default RoomClient;
-
-    
-    
-
-    
-
-

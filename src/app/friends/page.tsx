@@ -8,8 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2, UserPlus, Users, Search, Mail, UserCheck, UserX } from 'lucide-react';
-import { searchUsers, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, getFriendRequests, getFriends, removeFriend, AppUser } from '@/lib/firebase-service';
+import { searchUsers, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, getFriendRequests, getFriends, removeFriend, AppUser, PresenceStatus } from '@/lib/firebase-service';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { database } from '@/lib/firebase';
+import { ref, onValue, off } from 'firebase/database';
+import toast from 'react-hot-toast';
 
 export default function FriendsPage() {
   const { user, isLoaded } = useUserSession();
@@ -26,6 +29,8 @@ export default function FriendsPage() {
   
   const [requests, setRequests] = useState<AppUser[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  
+  const [presences, setPresences] = useState<{ [key: string]: PresenceStatus }>({});
 
   const [isPending, startTransition] = useTransition();
 
@@ -34,6 +39,15 @@ export default function FriendsPage() {
       router.push('/');
     }
   }, [isLoaded, user, router]);
+  
+  // Presence listener
+  useEffect(() => {
+      const presenceRef = ref(database, 'presence');
+      const listener = onValue(presenceRef, (snapshot) => {
+        setPresences(snapshot.val() ?? {});
+      });
+      return () => off(presenceRef, 'value', listener);
+  }, []);
 
   const fetchFriendsAndRequests = async () => {
     if (!user) return;
@@ -48,6 +62,7 @@ export default function FriendsPage() {
 
     } catch (error) {
       console.error(error);
+      toast.error('فشل في تحميل بيانات الأصدقاء.');
     } finally {
       setIsLoadingFriends(false);
       setIsLoadingRequests(false);
@@ -70,6 +85,7 @@ export default function FriendsPage() {
       setSearchResults(results);
     } catch (error) {
       console.error(error);
+       toast.error('فشل البحث عن المستخدمين.');
     } finally {
       setIsSearching(false);
     }
@@ -80,10 +96,10 @@ export default function FriendsPage() {
     startTransition(async () => {
       try {
         await sendFriendRequest(user.name, recipientName);
-        alert(`تم إرسال طلب صداقة إلى ${recipientName}.`);
+        toast.success(`تم إرسال طلب صداقة إلى ${recipientName}.`);
         setSearchResults(prev => prev.filter(u => u.name !== recipientName));
       } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
       }
     });
   };
@@ -93,10 +109,10 @@ export default function FriendsPage() {
     startTransition(async () => {
       try {
         await acceptFriendRequest(senderName, user.name);
-        alert(`أصبحت الآن صديقًا لـ ${senderName}.`);
+        toast.success(`أصبحت الآن صديقًا لـ ${senderName}.`);
         fetchFriendsAndRequests(); // Refresh lists
       } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
       }
     });
   };
@@ -106,10 +122,10 @@ export default function FriendsPage() {
     startTransition(async () => {
       try {
         await rejectFriendRequest(senderName, user.name);
-        alert(`تم رفض طلب الصداقة من ${senderName}.`);
+        toast.success(`تم رفض طلب الصداقة من ${senderName}.`);
         setRequests(prev => prev.filter(r => r.name !== senderName));
       } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
       }
     });
   };
@@ -119,10 +135,10 @@ export default function FriendsPage() {
     startTransition(async () => {
         try {
             await removeFriend(user.name, friendName);
-            alert(`تم حذف ${friendName} من قائمة أصدقائك.`);
+            toast.success(`تم حذف ${friendName} من قائمة أصدقائك.`);
             setFriends(prev => prev.filter(f => f.name !== friendName));
         } catch (error: any) {
-            alert(error.message);
+            toast.error(error.message);
         }
     });
 };
@@ -165,20 +181,26 @@ export default function FriendsPage() {
                 <div className="flex justify-center py-4"><Loader2 className="animate-spin" /></div>
               ) : friends.length > 0 ? (
                 <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {friends.map((friend) => (
-                    <div key={friend.name} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30">
-                       <div className="flex items-center gap-3">
-                         <Avatar className="h-10 w-10">
-                           <AvatarImage src={getAvatar(friend)?.imageUrl} alt={friend.name} />
-                           <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                         </Avatar>
-                         <span className="font-semibold">{friend.name}</span>
-                       </div>
-                       <Button variant="ghost" size="icon" onClick={() => handleRemoveFriend(friend.name)} disabled={isPending}>
-                           <UserX className="text-destructive h-5 w-5"/>
-                       </Button>
-                    </div>
-                  ))}
+                  {friends.map((friend) => {
+                    const isOnline = presences[friend.name]?.status === 'online';
+                    return (
+                        <div key={friend.name} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30">
+                           <div className="flex items-center gap-3">
+                             <div className="relative">
+                               <Avatar className="h-10 w-10">
+                                 <AvatarImage src={getAvatar(friend)?.imageUrl} alt={friend.name} />
+                                 <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
+                               </Avatar>
+                               {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-secondary" title="متصل"></div>}
+                             </div>
+                             <span className="font-semibold">{friend.name}</span>
+                           </div>
+                           <Button variant="ghost" size="icon" onClick={() => handleRemoveFriend(friend.name)} disabled={isPending}>
+                               <UserX className="text-destructive h-5 w-5"/>
+                           </Button>
+                        </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-4 space-y-3">

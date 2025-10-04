@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import { SosoIcon } from '@/components/icons/SosoIcon';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,12 +10,19 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import useUserSession from '@/hooks/use-user-session';
 import { usePWAInstall } from '@/hooks/use-pwa-install';
-import { ArrowDownToLine } from 'lucide-react';
+import { ArrowDownToLine, Bell, Users, Mail, UserPlus, UserCheck, UserX, LogIn } from 'lucide-react';
+import { database } from '@/lib/firebase';
+import { ref, onValue, off, remove, update } from 'firebase/database';
+import { FriendRequest, RoomInvitation, acceptFriendRequest, rejectFriendRequest } from '@/lib/firebase-service';
+import { Badge } from '../ui/badge';
+import toast from 'react-hot-toast';
 
 
 // Inlined SVG components to avoid lucide-react HMR issues
@@ -102,11 +110,79 @@ export function MainHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const { canInstall, installPWA } = usePWAInstall();
+
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [invitations, setInvitations] = useState<RoomInvitation[]>([]);
+  
+  const unreadCount = friendRequests.filter(r => !r.read).length + invitations.filter(i => !i.read).length;
+
+  useEffect(() => {
+    if (!user) return;
+
+    const requestsRef = ref(database, `users/${user.name}/friendRequests`);
+    const invitesRef = ref(database, `users/${user.name}/invitations`);
+
+    const requestsListener = onValue(requestsRef, (snapshot) => {
+      setFriendRequests(snapshot.exists() ? Object.values(snapshot.val()) : []);
+    });
+    
+    const invitesListener = onValue(invitesRef, (snapshot) => {
+      setInvitations(snapshot.exists() ? Object.values(snapshot.val()) : []);
+    });
+
+    return () => {
+      off(requestsRef, 'value', requestsListener);
+      off(invitesRef, 'value', invitesListener);
+    };
+  }, [user]);
   
   const handleLogout = () => {
     setUser(null);
     router.push('/');
   };
+
+  const handleAcceptRequest = async (senderName: string, reqId: string) => {
+    if (!user) return;
+    try {
+        await acceptFriendRequest(senderName, user.name);
+        toast.success(`أصبحت الآن صديقًا لـ ${senderName}.`);
+        // The listener will update the state automatically
+    } catch(error: any) {
+        toast.error(error.message);
+    }
+  }
+
+  const handleRejectRequest = async (senderName: string, reqId: string) => {
+    if (!user) return;
+    try {
+        await rejectFriendRequest(senderName, user.name);
+        toast.success(`تم رفض طلب الصداقة من ${senderName}.`);
+        // The listener will update the state automatically
+    } catch(error: any) {
+        toast.error(error.message);
+    }
+  }
+
+  const handleJoinRoom = (roomId: string, invId: string) => {
+    if (!user) return;
+    const inviteRef = ref(database, `users/${user.name}/invitations/${btoa(invId)}`);
+    remove(inviteRef);
+    router.push(`/rooms/${roomId}`);
+  }
+
+  const handleMarkAsRead = () => {
+    if (!user || unreadCount === 0) return;
+
+    const updates: { [key: string]: any } = {};
+    friendRequests.forEach(req => {
+        if(!req.read) updates[`/users/${user.name}/friendRequests/${btoa(req.id)}/read`] = true;
+    });
+    invitations.forEach(inv => {
+        if(!inv.read) updates[`/users/${user.name}/invitations/${btoa(inv.id)}/read`] = true;
+    });
+    
+    update(ref(database), updates);
+  }
 
   const navLinks = [
     { href: '/lobby', label: 'الغرف' },
@@ -181,6 +257,63 @@ export function MainHeader() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+           {user && (
+            <DropdownMenu onOpenChange={(open) => open && handleMarkAsRead()}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full relative">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-card" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-card/80 backdrop-blur-lg w-80">
+                <DropdownMenuLabel>الإشعارات</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {friendRequests.length === 0 && invitations.length === 0 ? (
+                  <DropdownMenuItem disabled>لا توجد إشعارات جديدة</DropdownMenuItem>
+                ) : (
+                  <>
+                    {invitations.map(inv => (
+                      <React.Fragment key={inv.id}>
+                        <DropdownMenuItem className="flex flex-col items-start gap-1">
+                          <div className="flex items-center text-sm">
+                            <Mail className="me-2 text-accent" />
+                            <span><span className='font-bold'>{inv.senderName}</span> دعاك إلى <span className='font-bold'>{inv.roomName}</span></span>
+                          </div>
+                          <Button size="sm" className="w-full h-8" onClick={() => handleJoinRoom(inv.roomId, inv.id)}>
+                            <LogIn className="me-2" />
+                            انضمام
+                          </Button>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </React.Fragment>
+                    ))}
+                    {friendRequests.map(req => (
+                      <React.Fragment key={req.id}>
+                        <DropdownMenuItem className="flex flex-col items-start gap-1">
+                           <div className="flex items-center text-sm mb-2">
+                             <UserPlus className="me-2 text-accent" />
+                             <span>طلب صداقة من <span className='font-bold'>{req.senderName}</span></span>
+                           </div>
+                           <div className="flex w-full gap-2">
+                            <Button size="sm" className="w-full h-8" onClick={() => handleAcceptRequest(req.senderName, req.id)}>
+                                <UserCheck className="me-2"/> قبول
+                            </Button>
+                             <Button size="sm" variant="destructive" className="w-full h-8" onClick={() => handleRejectRequest(req.senderName, req.id)}>
+                                <UserX className="me-2"/> رفض
+                            </Button>
+                           </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </React.Fragment>
+                    ))}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+           )}
 
           {user && (
             <div className="text-sm text-muted-foreground hidden md:block">
