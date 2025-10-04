@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Button } from '@/components/ui/button';
-import { Play, Search, Film, Pause, Forward, Rewind } from 'lucide-react';
+import { Play, Search, Film, Pause } from 'lucide-react';
 import { PlayerState } from './RoomClient';
 import { Slider } from '../ui/slider';
 import { cn } from '@/lib/utils';
@@ -190,10 +190,21 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   // --- Player Controls ---
   const togglePlay = useCallback(() => {
-    if (!canControl) return;
+    if (!canControl || !isPlayerReady.current) return;
+  
     const playerStatus = getPlayerState();
-    handleStateChange(playerStatus !== 1, getCurrentPlayerTime());
-  }, [canControl, handleStateChange]);
+    const shouldBePlaying = playerStatus !== 1;
+  
+    // Directly control the player
+    if (urlType === 'youtube' && ytPlayerRef.current) {
+      shouldBePlaying ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
+    } else if (urlType === 'direct' && htmlPlayerRef.current) {
+      shouldBePlaying ? htmlPlayerRef.current.play().catch(console.error) : htmlPlayerRef.current.pause();
+    }
+  
+    // Sync state with other clients
+    handleStateChange(shouldBePlaying, getCurrentPlayerTime());
+  }, [canControl, handleStateChange, urlType]);
 
   const seek = useCallback((amount: number) => {
     if (!canControl) return;
@@ -321,7 +332,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 <video
                     ref={htmlPlayerRef}
                     src={videoUrl}
-                    className="w-full h-full"
+                    className="w-full h-full object-contain"
                     onLoadedData={onHtmlReady}
                     onPlay={onHtmlStateChange}
                     onPause={onHtmlStateChange}
@@ -422,3 +433,5 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
+    

@@ -183,6 +183,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
 
   useEffect(() => {
     const fetchFriendData = async () => {
+        if (!user) return;
         const [friendsList, requestsList] = await Promise.all([
             getFriends(user.name),
             getFriendRequests(user.name)
@@ -487,6 +488,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
   };
   
   const handleOpenInviteDialog = async () => {
+    if (!user) return;
     try {
       const friendsData = await getFriends(user.name);
       setFriends(friendsData);
@@ -498,6 +500,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
   };
 
   const handleSendInvitation = async (recipientName: string) => {
+    if (!user) return;
     try {
         await sendRoomInvitation(user.name, recipientName, roomId, `غرفة ${hostName}`);
         setInvitedFriends(prev => new Set(prev).add(recipientName));
@@ -623,12 +626,14 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                          </div>
                          <div className="flex-grow min-h-0 bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
                            <ChatHeader isHost={isHost} roomId={roomId} />
-                           <ChatMessages roomId={roomId} user={user} />
+                           <div className="flex-grow min-h-0">
+                             <ChatMessages roomId={roomId} user={user} />
+                           </div>
                          </div>
                     </div>
                 )}
             </main>
-            <div className="w-full mt-auto">
+            <div className="relative z-20 w-full mt-auto">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
@@ -880,9 +885,10 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   const router = useRouter();
   const { user, isLoaded: isUserLoaded } = useUserSession();
   const [token, setToken] = useState('');
+  const seatedMembersRef = useRef<SeatedMember[]>([]); // Moved from RoomLayout
+  
   const [isSeated, setIsSeated] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
-  const seatedMembersRef = useRef<SeatedMember[]>([]);
   
   const sendSystemMessage = useCallback((text: string) => {
     if (!roomId || !user) return;
@@ -899,11 +905,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   }, [roomId, user]);
 
   useEffect(() => {
-    if (!isUserLoaded) return;
-    if (!user) {
-        router.push('/');
-        return;
-    }
+    if (!isUserLoaded || !user) return;
 
     const seatedMembersRefDb = ref(database, `rooms/${roomId}/seatedMembers`);
     const videoModeRef = ref(database, `rooms/${roomId}/videoMode`);
@@ -963,39 +965,34 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             }
 
             const disconnectRef = onDisconnect(memberRef);
-            disconnectRef.remove();
-
-            // If the current user is the host, set up automatic host transfer on disconnect
-            if (user.name === currentHost) {
-                const hostDisconnectRef = onDisconnect(hostRef);
-                hostDisconnectRef.set(get(ref(database, `rooms/${roomId}`)).then(snapshot => {
-                    if (!snapshot.exists()) return null; // Room was deleted
-
-                    const membersData: Member[] = Object.values(snapshot.val().members || {});
-                    const moderators: string[] = snapshot.val().moderators || [];
-
-                    // Filter out the disconnecting host
-                    const remainingMembers = membersData.filter(m => m.name !== user.name);
-                    
-                    if (remainingMembers.length === 0) {
-                        // If no one is left, schedule room deletion
-                        onDisconnect(ref(database, `rooms/${roomId}`)).remove();
-                        return null; // No new host
+            disconnectRef.remove().then(() => {
+                // This will run when the client disconnects uncleanly
+                get(ref(database, `rooms/${roomId}/members`)).then(snapshot => {
+                    const remainingMembers: Member[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
+                    if(remainingMembers.length === 0) {
+                        // If I was the last one, remove the room
+                         remove(ref(database, `rooms/${roomId}`));
+                    } else {
+                        // If I was the host, transfer host
+                         get(hostRef).then(hostSnapshot => {
+                             if (hostSnapshot.val() === user.name) {
+                                 const moderators: string[] = snapshot.val().moderators || [];
+                                 const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
+                                 if (potentialModeratorHosts.length > 0) {
+                                     potentialModeratorHosts.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
+                                     set(hostRef, potentialModeratorHosts[0].name);
+                                 } else {
+                                     remainingMembers.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
+                                     set(hostRef, remainingMembers[0].name);
+                                 }
+                             }
+                         });
                     }
+                });
+                sendSystemMessage(`${user.name} غادر الغرفة`);
+            });
 
-                    // Prioritize moderators
-                    const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
-                    if (potentialModeratorHosts.length > 0) {
-                        // Sort by joinedAt to get the oldest moderator
-                        potentialModeratorHosts.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
-                        return potentialModeratorHosts[0].name;
-                    }
 
-                    // If no moderators, pick the oldest member
-                    remainingMembers.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
-                    return remainingMembers[0].name;
-                }));
-            }
         })();
 
         const tokenFetchPromise = (async () => {
@@ -1031,8 +1028,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     setupRoom();
 
     const handleBeforeUnload = () => {
-        // The onDisconnect setup should handle the cleanup.
-        // We can add a system message here, but it's not guaranteed to send.
         goOffline(database);
     };
 
@@ -1042,25 +1037,20 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         isMounted = false;
         window.removeEventListener('beforeunload', handleBeforeUnload);
         
-        // This cleanup is for when the component unmounts cleanly (e.g., navigating away)
-        // NOT for page reloads.
         if (user) {
             const memberRefOnUnmount = ref(database, `rooms/${roomId}/members/${user.name}`);
             const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
             
+            // Graceful leave
             remove(memberRefOnUnmount);
             if (userSeat) {
-                const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`);
-                remove(seatRef);
+                remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
             }
             sendSystemMessage(`${user.name} غادر الغرفة`);
+            
+            onDisconnect(memberRef).cancel();
+            onDisconnect(hostRef).cancel();
         }
-        
-        // Cancel all onDisconnect operations when leaving gracefully
-        onDisconnect(memberRef).cancel();
-        onDisconnect(hostRef).cancel();
-        onDisconnect(ref(database, `rooms/${roomId}`)).cancel();
-
         goOffline(database);
     };
 }, [isUserLoaded, user, roomId, router, sendSystemMessage]);
@@ -1098,4 +1088,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 export default RoomClient;
 
     
+    
+
     
