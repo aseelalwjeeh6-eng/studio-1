@@ -619,22 +619,24 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
                 onBackgroundClick={() => setIsBackgroundOpen(true)}
                 canControl={canControl}
             />
-             <main className="w-full max-w-7xl mx-auto flex-grow grid grid-cols-1 md:grid-cols-3 gap-4 px-4 pb-4 min-h-0">
+            <main className="w-full max-w-7xl mx-auto flex-grow grid grid-cols-1 md:grid-cols-3 gap-4 px-4 pb-4 min-h-0">
                 {videoMode ? (
                    <div className="md:col-span-3 rounded-lg overflow-hidden h-full">
                      <VideoConference />
                    </div>
                 ) : (
                     <div className="md:col-span-3 flex flex-col gap-4 min-h-0">
-                        <Player 
-                            videoUrl={videoUrl} 
-                            onSetVideo={onSetVideo} 
-                            canControl={canControl} 
-                            onSearchClick={() => setIsSearchOpen(true)}
-                            playerState={playerState}
-                            onPlayerStateChange={handlePlayerStateChange}
-                            onVideoEnded={handleVideoEnded}
-                        />
+                        <div className="flex-grow flex items-center justify-center">
+                            <Player 
+                                videoUrl={videoUrl} 
+                                onSetVideo={onSetVideo} 
+                                canControl={canControl} 
+                                onSearchClick={() => setIsSearchOpen(true)}
+                                playerState={playerState}
+                                onPlayerStateChange={handlePlayerStateChange}
+                                onVideoEnded={handleVideoEnded}
+                            />
+                        </div>
                          <Seats 
                             seatedMembers={seatedMembers}
                             hostName={hostName}

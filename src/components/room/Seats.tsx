@@ -279,7 +279,7 @@ const Seats = ({
     currentUserFriends: AppUser[];
     currentUserRequests: AppUser[];
 }) => {
-    const totalSeats = 8;
+    const totalSeats = 4;
   
     const participants = useParticipants();
     const { localParticipant } = useLocalParticipant();
@@ -304,7 +304,7 @@ const Seats = ({
   
     return (
         <div className="w-full bg-card/50 backdrop-blur-lg rounded-lg p-4">
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-4 gap-y-6">
+            <div className="grid grid-cols-4 gap-x-4 gap-y-6">
                 {seats.map(({ seatId, seatedMember, participant }) => (
                     <Seat 
                         key={seatId} 
