@@ -19,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { cn } from '@/lib/utils';
+import { filterProfanity } from '@/ai/flows/profanity-filter';
 
 interface ChatProps {
   roomId: string;
@@ -64,12 +65,14 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
 
     setIsSending(true);
     try {
+        const { isProfane, filteredText } = await filterProfanity({ text: newMessage });
+
         const chatRef = ref(database, `rooms/${roomId}/chat`);
         const newMsgRef = push(chatRef);
         const messageData: Message = {
             id: newMsgRef.key!,
             sender: user.name,
-            text: newMessage,
+            text: filteredText,
             timestamp: Date.now(),
         };
         await set(newMsgRef, messageData);
@@ -118,11 +121,14 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.length > 0 ? messages.map((msg) => {
             const isCurrentUser = msg.sender === user.name;
-            return msg.isSystemMessage ? (
-                <p key={msg.id} className="text-sm text-muted-foreground italic text-center py-1">
-                    {msg.text}
-                </p>
-            ) : (
+            if (msg.isSystemMessage) {
+                return (
+                    <p key={msg.id} className="text-sm text-muted-foreground italic text-center py-1">
+                        {msg.text}
+                    </p>
+                );
+            }
+            return (
                 <div key={msg.id} className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
                     {!isCurrentUser && (
                         <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
@@ -136,7 +142,7 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
                         <p className="text-md text-foreground break-words">{msg.text}</p>
                     </div>
                 </div>
-            )
+            );
         }) : (
             <div className="flex h-full items-center justify-center text-muted-foreground">
                 <p>لا توجد رسائل بعد. ابدأ المحادثة!</p>
