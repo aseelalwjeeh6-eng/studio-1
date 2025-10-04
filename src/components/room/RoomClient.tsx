@@ -26,6 +26,7 @@ import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends 
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
+import toast from 'react-hot-toast';
 
 
 export type Member = { 
@@ -560,6 +561,17 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
     setVideoMode(mode);
   }
 
+  const handleSwitchToVideoClick = () => {
+    toast('الخدمة قيد التطوير سيتم تجهيزها قريبا', {
+        icon: '🚧',
+        duration: 3000,
+        style: {
+            fontSize: '1.2rem',
+            padding: '1rem',
+        }
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen w-full bg-background items-center">
         {roomBackground && (
@@ -579,7 +591,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                 onPlaylistClick={() => setIsPlaylistOpen(true)}
                 roomId={roomId}
                 onLeaveRoom={handleLeaveRoom}
-                onSwitchToVideo={() => handleSetVideoMode(true)}
+                onSwitchToVideo={handleSwitchToVideoClick}
                 onSwitchToPlayer={() => handleSetVideoMode(false)}
                 videoMode={videoMode}
                 onInviteClick={handleOpenInviteDialog}
@@ -1092,4 +1104,5 @@ export default RoomClient;
     
 
     
+
 
