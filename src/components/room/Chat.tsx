@@ -19,7 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { cn } from '@/lib/utils';
-import { filterProfanity } from '@/ai/flows/profanity-filter';
+// import { filterProfanity } from '@/ai/flows/profanity-filter';
 
 interface ChatProps {
   roomId: string;
@@ -65,14 +65,12 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
 
     setIsSending(true);
     try {
-        const { isProfane, filteredText } = await filterProfanity({ text: newMessage });
-
         const chatRef = ref(database, `rooms/${roomId}/chat`);
         const newMsgRef = push(chatRef);
         const messageData: Message = {
             id: newMsgRef.key!,
             sender: user.name,
-            text: filteredText,
+            text: newMessage,
             timestamp: Date.now(),
         };
         await set(newMsgRef, messageData);
@@ -119,7 +117,7 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
             )}
         </div>
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-        {messages.length > 0 ? messages.map((msg) => {
+        {messages.map((msg) => {
             const isCurrentUser = msg.sender === user.name;
             if (msg.isSystemMessage) {
                 return (
@@ -143,11 +141,7 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
                     </div>
                 </div>
             );
-        }) : (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-                <p>لا توجد رسائل بعد. ابدأ المحادثة!</p>
-            </div>
-        )}
+        })}
         <div ref={chatEndRef} />
         </div>
         <div className="p-4 border-t border-border flex-shrink-0">
