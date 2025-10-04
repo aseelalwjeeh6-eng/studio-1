@@ -124,11 +124,10 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId }: { roomId: string }) => {
+const RoomLayout = ({ roomId, seatedMembersRef }: { roomId: string, seatedMembersRef: React.MutableRefObject<SeatedMember[]> }) => {
   const router = useRouter();
   const { user, isLoaded: isUserLoaded } = useUserSession();
   const [allMembers, setAllMembers] = useState<Member[]>([]);
-  const seatedMembersRef = useRef<SeatedMember[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
@@ -259,7 +258,7 @@ const RoomLayout = ({ roomId }: { roomId: string }) => {
         isMounted = false;
         listeners.forEach(unsubscribe => unsubscribe());
     };
-}, [isUserLoaded, user, roomId, router]);
+}, [isUserLoaded, user, roomId, router, seatedMembersRef]);
 
   useEffect(() => {
       if(typeof window !== 'undefined') {
@@ -918,6 +917,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   const [token, setToken] = useState('');
   const [isSeated, setIsSeated] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
+  const seatedMembersRef = useRef<SeatedMember[]>([]);
   
   const sendSystemMessage = useCallback((text: string) => {
     if (!roomId || !user) return;
@@ -940,10 +940,10 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         return;
     }
 
-    const seatedMembersRef = ref(database, `rooms/${roomId}/seatedMembers`);
+    const seatedMembersRefDb = ref(database, `rooms/${roomId}/seatedMembers`);
     const videoModeRef = ref(database, `rooms/${roomId}/videoMode`);
 
-    const seatedListener = onValue(seatedMembersRef, (snapshot) => {
+    const seatedListener = onValue(seatedMembersRefDb, (snapshot) => {
         const seatedData = snapshot.val();
         const isCurrentlySeated = seatedData ? Object.values(seatedData).some((member: any) => member.name === user.name) : false;
         setIsSeated(isCurrentlySeated);
@@ -954,7 +954,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     });
     
     return () => {
-        off(seatedMembersRef, 'value', seatedListener);
+        off(seatedMembersRefDb, 'value', seatedListener);
         off(videoModeRef, 'value', videoModeListener);
     }
   }, [isUserLoaded, user, roomId, router]);
@@ -1124,7 +1124,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       isSeated={isSeated}
       videoMode={videoMode}
     >
-      <RoomLayout roomId={roomId} />
+      <RoomLayout roomId={roomId} seatedMembersRef={seatedMembersRef} />
     </LiveKitRoom>
   );
 };
