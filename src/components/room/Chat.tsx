@@ -118,27 +118,23 @@ const Chat = ({ roomId, user, isHost, isSeated, isMuted, onToggleMute }: ChatPro
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.length > 0 ? messages.map((msg) => {
             const isCurrentUser = msg.sender === user.name;
-            return (
-                <div key={msg.id}>
-                    {msg.isSystemMessage ? (
-                        <p className="text-sm text-muted-foreground italic text-center py-1">
-                            {msg.text}
-                        </p>
-                    ) : (
-                        <div className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
-                            {!isCurrentUser && (
-                                <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
-                            )}
-                             <div className={cn(
-                                "max-w-xs md:max-w-md p-3 rounded-2xl",
-                                isCurrentUser 
-                                    ? "bg-primary text-primary-foreground rounded-br-none" 
-                                    : "bg-secondary text-secondary-foreground rounded-bl-none"
-                            )}>
-                                <p className="text-md text-foreground break-words">{msg.text}</p>
-                            </div>
-                        </div>
+            return msg.isSystemMessage ? (
+                <p key={msg.id} className="text-sm text-muted-foreground italic text-center py-1">
+                    {msg.text}
+                </p>
+            ) : (
+                <div key={msg.id} className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
+                    {!isCurrentUser && (
+                        <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                     )}
+                     <div className={cn(
+                        "max-w-xs md:max-w-md p-3 rounded-2xl",
+                        isCurrentUser 
+                            ? "bg-primary text-primary-foreground rounded-br-none" 
+                            : "bg-secondary text-secondary-foreground rounded-bl-none"
+                    )}>
+                        <p className="text-md text-foreground break-words">{msg.text}</p>
+                    </div>
                 </div>
             )
         }) : (
