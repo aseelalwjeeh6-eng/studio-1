@@ -124,7 +124,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId, user }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>}) => {
+const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void }) => {
   const router = useRouter();
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -264,21 +264,6 @@ const RoomLayout = ({ roomId, user }: { roomId: string, user: NonNullable<Return
       }
   }, []);
 
-  const sendSystemMessage = useCallback((text: string) => {
-    if (!roomId) return;
-    const chatRef = ref(database, `rooms/${roomId}/chat`);
-    const newMsgRef = push(chatRef);
-    const messageData: Message = {
-      id: newMsgRef.key!,
-      sender: 'System',
-      text, // No user name prefix needed as it's passed from caller
-      timestamp: Date.now(),
-      isSystemMessage: true,
-    };
-    set(newMsgRef, messageData);
-  }, [roomId]);
-
-
   useEffect(() => {
     if (isSeated) {
         const currentUserSeat = seatedMembers.find(m => m.name === user.name);
@@ -305,10 +290,6 @@ const RoomLayout = ({ roomId, user }: { roomId: string, user: NonNullable<Return
               return { name: user.name, avatarId: user.avatarId || 'avatar1', seatId: seatId };
           }
           return; 
-      }).then((result) => {
-          if (result.committed && !currentUserSeat) {
-             sendSystemMessage(`${user.name}@ دخل الغرفة`);
-          }
       }).catch((error) => {
           console.error("Transaction failed: ", error);
           alert("المقعد محجوز بالفعل");
@@ -319,9 +300,7 @@ const RoomLayout = ({ roomId, user }: { roomId: string, user: NonNullable<Return
       const currentUserSeat = seatedMembers.find(m => m.name === user.name);
       if (currentUserSeat) {
           const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}`);
-          set(seatRef, null).then(() => {
-            sendSystemMessage(`${user.name}@ غادر الغرفة`);
-          });
+          set(seatRef, null);
       }
   };
 
@@ -1111,11 +1090,12 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       isSeated={isSeated}
       videoMode={videoMode}
     >
-      <RoomLayout roomId={roomId} user={user} />
+      <RoomLayout roomId={roomId} user={user} sendSystemMessage={sendSystemMessage} />
     </LiveKitRoom>
   );
 };
 
 export default RoomClient;
 
+    
     
