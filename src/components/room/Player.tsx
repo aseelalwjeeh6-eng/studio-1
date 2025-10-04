@@ -84,6 +84,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [videoAspectRatio, setVideoAspectRatio] = useState('16 / 9');
 
 
   // --- Generic Player Control ---
@@ -231,6 +232,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
     setDuration(event.target.getDuration());
+    setVideoAspectRatio('16 / 9');
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         event.target.seekTo(initialSeekTime, true);
@@ -255,6 +257,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
     setDuration(htmlPlayerRef.current.duration);
+    const { videoWidth, videoHeight } = htmlPlayerRef.current;
+    if (videoWidth && videoHeight) {
+      setVideoAspectRatio(`${videoWidth} / ${videoHeight}`);
+    }
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         htmlPlayerRef.current.currentTime = initialSeekTime;
@@ -404,7 +410,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   return (
     <div 
-        className="aspect-video w-full rounded-lg overflow-hidden shadow-md bg-black relative"
+        className="w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative"
+        style={{ aspectRatio: urlType === 'empty' ? '16 / 9' : videoAspectRatio }}
         onMouseMove={handleInteraction}
         onClick={handleInteraction}
         onMouseLeave={() => {

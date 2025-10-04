@@ -607,7 +607,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-        <div className="relative z-10 w-full flex flex-col h-full items-center">
+        <div className="relative z-10 w-full flex flex-col h-screen max-h-screen items-center">
             <RoomHeader 
                 onSearchClick={() => setIsSearchOpen(true)} 
                 onPlaylistClick={() => setIsPlaylistOpen(true)}
@@ -627,7 +627,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                    </div>
                 ) : (
                     <div className="flex-grow flex flex-col gap-4 min-h-0">
-                        <div className="flex-grow flex items-center justify-center min-h-0">
+                        <div className="flex items-center justify-center">
                             <Player 
                                 videoUrl={videoUrl} 
                                 onSetVideo={onSetVideo} 
@@ -662,7 +662,7 @@ alert(`تمت إضافة فيديو إلى قائمة التشغيل.`);
                     </div>
                 )}
             </main>
-            <div className="w-full flex-shrink-0">
+            <div className="w-full mt-auto">
                  <Chat 
                     roomId={roomId} 
                     user={user} 
