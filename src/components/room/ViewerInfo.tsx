@@ -27,7 +27,7 @@ const ViewerInfo = ({ members }: ViewerInfoProps) => {
             {displayedViewers.map(member => (
                 <Tooltip key={member.name}>
                     <TooltipTrigger>
-                        <Avatar className="w-10 h-10 border-2 border-background">
+                        <Avatar className="w-12 h-12 border-2 border-background">
                             <AvatarImage src={getAvatar(member)?.imageUrl} alt={member.name} />
                             <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
                         </Avatar>
@@ -40,7 +40,7 @@ const ViewerInfo = ({ members }: ViewerInfoProps) => {
              {hiddenViewersCount > 0 && (
                 <Tooltip>
                     <TooltipTrigger>
-                        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-bold border-2 border-background">
+                        <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-base font-bold border-2 border-background">
                             +{hiddenViewersCount}
                         </div>
                     </TooltipTrigger>
