@@ -84,7 +84,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [videoAspectRatio, setVideoAspectRatio] = useState('16 / 9');
+  const [videoAspectRatio, setVideoAspectRatio] = useState<string | undefined>(undefined);
+  
+  const lastClickTimeRef = useRef(0);
+  const lastClickSideRef = useRef<'left' | 'right' | null>(null);
 
 
   // --- Generic Player Control ---
@@ -192,14 +195,18 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
   
+    let shouldBePlaying: boolean;
     const playerStatus = getPlayerState();
-    const shouldBePlaying = playerStatus !== 1;
   
     // Directly control the player
     if (urlType === 'youtube' && ytPlayerRef.current) {
+      shouldBePlaying = playerStatus !== 1;
       shouldBePlaying ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
     } else if (urlType === 'direct' && htmlPlayerRef.current) {
+      shouldBePlaying = htmlPlayerRef.current.paused;
       shouldBePlaying ? htmlPlayerRef.current.play().catch(console.error) : htmlPlayerRef.current.pause();
+    } else {
+        return;
     }
   
     // Sync state with other clients
@@ -227,15 +234,36 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     
     handleStateChange(getPlayerState() === 1, newTime);
   };
-
-  const handleInteraction = () => {
-    if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-    }
+  
+  const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     setShowControls(true);
-    controlsTimeoutRef.current = setTimeout(() => {
-        setShowControls(false);
-    }, 3000);
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+    
+    if (!canControl || urlType === 'empty' || urlType === 'iframe') return;
+
+    const DOUBLE_CLICK_THRESHOLD = 300;
+    const currentTime = Date.now();
+    const clickX = e.clientX;
+    const { left, width } = e.currentTarget.getBoundingClientRect();
+    const clickSide = clickX < left + width / 2 ? 'left' : 'right';
+
+    if (
+      currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD &&
+      clickSide === lastClickSideRef.current
+    ) {
+      // Double click detected
+      const seekAmount = clickSide === 'left' ? -5 : 5;
+      seek(seekAmount);
+
+      // Reset after double click
+      lastClickTimeRef.current = 0;
+      lastClickSideRef.current = null;
+    } else {
+      // Single click
+      lastClickTimeRef.current = currentTime;
+      lastClickSideRef.current = clickSide;
+    }
   };
   
   // --- YouTube Player Event Handlers ---
@@ -243,7 +271,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
     setDuration(event.target.getDuration());
-    setVideoAspectRatio('16 / 9');
+    setVideoAspectRatio(undefined);
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         event.target.seekTo(initialSeekTime, true);
@@ -416,9 +444,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   return (
     <div 
         className="w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative"
-        style={{ aspectRatio: urlType === 'empty' ? '16 / 9' : videoAspectRatio }}
-        onMouseMove={handleInteraction}
-        onClick={handleInteraction}
+        style={{ aspectRatio: videoAspectRatio ?? '16 / 9' }}
+        onMouseMove={handlePlayerClick}
+        onClick={handlePlayerClick}
         onMouseLeave={() => {
             if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
             setShowControls(false);
@@ -433,5 +461,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
-    
