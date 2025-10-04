@@ -68,7 +68,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
-                            <MoreVertical className="h-6 w-6"/>
+                            <MoreVertical className="h-8 w-8" strokeWidth={2.5} />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="bg-card/80 backdrop-blur-lg">
@@ -967,6 +967,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
             const disconnectRef = onDisconnect(memberRef);
             disconnectRef.remove().then(() => {
+                sendSystemMessage(`${user.name} غادر الغرفة`);
                 // This will run when the client disconnects uncleanly
                 get(ref(database, `rooms/${roomId}/members`)).then(snapshot => {
                     const remainingMembers: Member[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
@@ -990,7 +991,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
                          });
                     }
                 });
-                sendSystemMessage(`${user.name} غادر الغرفة`);
             });
 
 
@@ -1092,3 +1092,4 @@ export default RoomClient;
     
 
     
+
