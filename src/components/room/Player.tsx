@@ -253,11 +253,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   };
 
   // --- HTML5 Player Event Handlers ---
-  const onHtmlReady = () => {
+  const onHtmlReady = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
     setDuration(htmlPlayerRef.current.duration);
-    const { videoWidth, videoHeight } = htmlPlayerRef.current;
+    const { videoWidth, videoHeight } = e.currentTarget;
     if (videoWidth && videoHeight) {
       setVideoAspectRatio(`${videoWidth} / ${videoHeight}`);
     }
@@ -383,14 +383,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         <div></div>
 
         <div className="flex items-center justify-center gap-8">
-            <Button onClick={() => seek(-10)} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-16 h-16">
-                <Rewind className="w-8 h-8" />
-            </Button>
             <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-20 h-20">
                 {playerState?.isPlaying ? <Pause className="w-12 h-12" /> : <Play className="w-12 h-12" />}
-            </Button>
-             <Button onClick={() => seek(10)} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-16 h-16">
-                <Forward className="w-8 h-8" />
             </Button>
         </div>
 
