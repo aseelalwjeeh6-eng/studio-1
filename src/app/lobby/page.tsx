@@ -13,7 +13,6 @@ import { ref, onValue, off, goOnline } from 'firebase/database';
 import Hearts from '@/components/shared/Hearts';
 import { createRoom } from '@/lib/firebase-service';
 import { v4 as uuidv4 } from 'uuid';
-import toast from 'react-hot-toast';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -87,7 +86,7 @@ export default function LobbyPage() {
       router.push(`/rooms/${newRoomId}`);
     } catch (error) {
       console.error("Failed to create room:", error);
-      toast.error('فشل في إنشاء الغرفة.');
+      console.error('فشل في إنشاء الغرفة.');
       setIsCreatingRoom(false);
     }
   };

@@ -22,7 +22,6 @@ import { database } from '@/lib/firebase';
 import { ref, onValue, off, remove, update } from 'firebase/database';
 import { FriendRequest, RoomInvitation, acceptFriendRequest, rejectFriendRequest } from '@/lib/firebase-service';
 import { Badge } from '../ui/badge';
-import toast from 'react-hot-toast';
 
 
 // Inlined SVG components to avoid lucide-react HMR issues
@@ -145,10 +144,10 @@ export function MainHeader() {
     if (!user) return;
     try {
         await acceptFriendRequest(senderName, user.name);
-        toast.success(`أصبحت الآن صديقًا لـ ${senderName}.`);
+        console.log(`أصبحت الآن صديقًا لـ ${senderName}.`);
         // The listener will update the state automatically
     } catch(error: any) {
-        toast.error(error.message);
+        console.error(error.message);
     }
   }
 
@@ -156,10 +155,10 @@ export function MainHeader() {
     if (!user) return;
     try {
         await rejectFriendRequest(senderName, user.name);
-        toast.success(`تم رفض طلب الصداقة من ${senderName}.`);
+        console.log(`تم رفض طلب الصداقة من ${senderName}.`);
         // The listener will update the state automatically
     } catch(error: any) {
-        toast.error(error.message);
+        console.error(error.message);
     }
   }
 

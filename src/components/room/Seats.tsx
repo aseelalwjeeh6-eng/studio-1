@@ -24,7 +24,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import toast from 'react-hot-toast';
 
 const Seat = ({ 
     seatId,
@@ -91,9 +90,9 @@ const Seat = ({
         if (!seatedMember || !currentUser) return;
         try {
             await sendFriendRequest(currentUser.name, seatedMember.name);
-            toast.success(`تم إرسال طلب صداقة إلى ${seatedMember.name}.`);
+            console.log(`تم إرسال طلب صداقة إلى ${seatedMember.name}.`);
         } catch (error: any) {
-            toast.error(error.message);
+            console.error(error.message);
         }
     };
 

@@ -28,7 +28,6 @@ import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends 
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
-import toast from 'react-hot-toast';
 import { Label } from '../ui/label';
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -253,11 +252,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     setPinError(false);
     if (pin.length === 4) {
         if (pin === roomPassword) {
-            toast.success("تم الدخول بنجاح!");
+            console.log("تم الدخول بنجاح!");
             onCorrectPassword();
             setIsAuthenticated(true);
         } else {
-            toast.error("كلمة المرور غير صحيحة.");
+            console.error("كلمة المرور غير صحيحة.");
             setPinError(true);
             setTimeout(() => {
                 setPinInput('');
@@ -281,7 +280,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         if (!isMounted) return;
 
         if (!roomSnapshot.exists()) {
-          toast.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
+          console.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
           router.push('/lobby');
           return;
         }
@@ -373,7 +372,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
           return; 
       }).catch((error) => {
           console.error("Transaction failed: ", error);
-          toast.error("المقعد محجوز بالفعل");
+          console.error("المقعد محجوز بالفعل");
       });
   };
 
@@ -477,7 +476,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       };
       const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
       set(playlistRef, newItem);
-      toast.success(`تمت إضافة "${video.snippet.title}" إلى قائمة التشغيل.`);
+      console.log(`تمت إضافة "${video.snippet.title}" إلى قائمة التشغيل.`);
   };
   
   const handleAddUrlToPlaylist = async (url: string) => {
@@ -517,7 +516,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
     const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
     set(playlistRef, newItem);
-    toast.success(`تمت إضافة فيديو إلى قائمة التشغيل.`);
+    console.log(`تمت إضافة فيديو إلى قائمة التشغيل.`);
     setUrlInput('');
   };
 
@@ -565,7 +564,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`);
         set(seatRef, null);
     }
-    toast.success(`تم طرد ${userNameToKick}`);
+    console.log(`تم طرد ${userNameToKick}`);
   };
   
   const handleOpenInviteDialog = async () => {
@@ -576,7 +575,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       setInvitedFriends(new Set()); // Reset invited state on open
       setIsInviteOpen(true);
     } catch(error) {
-      toast.error("فشل في جلب قائمة الأصدقاء.");
+      console.error("فشل في جلب قائمة الأصدقاء.");
     }
   };
   
@@ -607,9 +606,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     
     if (Object.keys(updates).length > 0) {
       await update(ref(database), updates);
-      toast.success("تم حفظ إعدادات الغرفة.");
+      console.log("تم حفظ إعدادات الغرفة.");
     } else {
-      toast.info("لا توجد تغييرات لحفظها.");
+      console.log("لا توجد تغييرات لحفظها.");
     }
     setIsSettingsOpen(false);
   };
@@ -619,9 +618,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     try {
         await sendRoomInvitation(user.name, recipientName, roomId, roomName || `غرفة ${hostName}`);
         setInvitedFriends(prev => new Set(prev).add(recipientName));
-        toast.success(`تمت دعوة ${recipientName} إلى الغرفة.`);
+        console.log(`تمت دعوة ${recipientName} إلى الغرفة.`);
     } catch (error: any) {
-        toast.error(error.message);
+        console.error(error.message);
     }
   };
 
@@ -630,7 +629,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       const roomRef = ref(database, `rooms/${roomId}/moderators`);
       const newModerators = [...moderators, userName];
       set(roomRef, newModerators);
-      toast.success(`أصبح ${userName} مشرفًا.`);
+      console.log(`أصبح ${userName} مشرفًا.`);
   }
 
   const handleDemote = (userName: string) => {
@@ -638,7 +637,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       const roomRef = ref(database, `rooms/${roomId}/moderators`);
       const newModerators = moderators.filter(mod => mod !== userName);
       set(roomRef, newModerators);
-      toast.success(`لم يعد ${userName} مشرفًا.`);
+      console.log(`لم يعد ${userName} مشرفًا.`);
   }
 
   const handleTransferHost = (userName: string) => {
@@ -650,7 +649,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       updates[`/rooms/${roomId}/moderators`] = newModerators;
 
       update(ref(database), updates);
-      toast.success(`أصبحت الغرفة الآن ملك ${userName}.`);
+      console.log(`أصبحت الغرفة الآن ملك ${userName}.`);
   }
 
   const getAvatar = (user: AppUser | Member | SeatedMember) => {
@@ -675,14 +674,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   const handleSwitchToVideoClick = () => {
-    toast('الخدمة قيد التطوير سيتم تجهيزها قريبا', {
-        icon: '🚧',
-        duration: 3000,
-        style: {
-            fontSize: '1.2rem',
-            padding: '1rem',
-        }
-    });
+    console.log('الخدمة قيد التطوير سيتم تجهيزها قريبا');
   };
 
   if (!isAuthenticated) {
@@ -1129,7 +1121,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         if (!isMounted) return;
         
         if (!roomSnapshot.exists()) {
-            toast.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
+            console.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
             router.push('/lobby');
             return;
         }
@@ -1204,7 +1196,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             } catch (error) {
                  if (isMounted) {
                     console.error("Error fetching LiveKit token:", error);
-                    toast.error('فشل في الحصول على رمز الدخول للغرفة الصوتية.');
+                    console.error('فشل في الحصول على رمز الدخول للغرفة الصوتية.');
                  }
             }
         })();
@@ -1214,7 +1206,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         } catch (error) {
             if (isMounted) {
                 console.error("Error setting up room:", error);
-                toast.error('فشل في تهيئة الغرفة.');
+                console.error('فشل في تهيئة الغرفة.');
                 router.push('/lobby');
             }
         }
@@ -1297,4 +1289,3 @@ export default RoomClient;
     
 
     
-

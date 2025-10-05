@@ -12,7 +12,6 @@ import { searchUsers, sendFriendRequest, acceptFriendRequest, rejectFriendReques
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off } from 'firebase/database';
-import toast from 'react-hot-toast';
 
 export default function FriendsPage() {
   const { user, isLoaded } = useUserSession();
@@ -62,7 +61,7 @@ export default function FriendsPage() {
 
     } catch (error) {
       console.error(error);
-      toast.error('فشل في تحميل بيانات الأصدقاء.');
+      console.error('فشل في تحميل بيانات الأصدقاء.');
     } finally {
       setIsLoadingFriends(false);
       setIsLoadingRequests(false);
@@ -85,7 +84,7 @@ export default function FriendsPage() {
       setSearchResults(results);
     } catch (error) {
       console.error(error);
-       toast.error('فشل البحث عن المستخدمين.');
+       console.error('فشل البحث عن المستخدمين.');
     } finally {
       setIsSearching(false);
     }
@@ -96,10 +95,10 @@ export default function FriendsPage() {
     startTransition(async () => {
       try {
         await sendFriendRequest(user.name, recipientName);
-        toast.success(`تم إرسال طلب صداقة إلى ${recipientName}.`);
+        console.log(`تم إرسال طلب صداقة إلى ${recipientName}.`);
         setSearchResults(prev => prev.filter(u => u.name !== recipientName));
       } catch (error: any) {
-        toast.error(error.message);
+        console.error(error.message);
       }
     });
   };
@@ -109,10 +108,10 @@ export default function FriendsPage() {
     startTransition(async () => {
       try {
         await acceptFriendRequest(senderName, user.name);
-        toast.success(`أصبحت الآن صديقًا لـ ${senderName}.`);
+        console.log(`أصبحت الآن صديقًا لـ ${senderName}.`);
         fetchFriendsAndRequests(); // Refresh lists
       } catch (error: any) {
-        toast.error(error.message);
+        console.error(error.message);
       }
     });
   };
@@ -122,10 +121,10 @@ export default function FriendsPage() {
     startTransition(async () => {
       try {
         await rejectFriendRequest(senderName, user.name);
-        toast.success(`تم رفض طلب الصداقة من ${senderName}.`);
+        console.log(`تم رفض طلب الصداقة من ${senderName}.`);
         setRequests(prev => prev.filter(r => r.name !== senderName));
       } catch (error: any) {
-        toast.error(error.message);
+        console.error(error.message);
       }
     });
   };
@@ -135,10 +134,10 @@ export default function FriendsPage() {
     startTransition(async () => {
         try {
             await removeFriend(user.name, friendName);
-            toast.success(`تم حذف ${friendName} من قائمة أصدقائك.`);
+            console.log(`تم حذف ${friendName} من قائمة أصدقائك.`);
             setFriends(prev => prev.filter(f => f.name !== friendName));
         } catch (error: any) {
-            toast.error(error.message);
+            console.error(error.message);
         }
     });
 };

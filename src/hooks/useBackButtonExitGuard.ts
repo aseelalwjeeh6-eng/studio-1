@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
 
 export const BackButtonExitGuard = () => {
     const router = useRouter();
@@ -23,21 +22,16 @@ export const BackButtonExitGuard = () => {
                 }
 
                 if (clickCount.current >= 3) {
-                    toast.dismiss();
                     // Allow the native back action to proceed, which might exit the PWA
                     window.history.back();
                 } else {
-                     toast(`اضغط ${3 - clickCount.current} مرات أخرى للخروج`, {
-                        id: 'exit-toast',
-                        duration: 2000,
-                     });
+                     console.log(`اضغط ${3 - clickCount.current} مرات أخرى للخروج`);
                      
                      // Push a state to "catch" the back button press
                      window.history.pushState(null, '', window.location.href);
 
                     resetTimeout.current = setTimeout(() => {
                         clickCount.current = 0;
-                        toast.dismiss('exit-toast');
                     }, 2000);
                 }
             } else {

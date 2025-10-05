@@ -14,7 +14,6 @@ import { generateAvatar } from '@/ai/flows/generate-avatar-flow';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AppUser } from '@/lib/firebase-service';
-import toast from 'react-hot-toast';
 import { Separator } from '@/components/ui/separator';
 
 export default function ProfilePage() {
@@ -54,10 +53,10 @@ export default function ProfilePage() {
         const updatedUser = { ...user, avatarId: imageToUpdate.id };
         setUser(updatedUser);
         await upsertUser(updatedUser);
-        toast.success('تم تحديث الصورة الرمزية بنجاح!');
+        console.log('تم تحديث الصورة الرمزية بنجاح!');
         setSelectedImage(null);
       } catch (error) {
-        toast.error('فشل تحديث الصورة الرمزية.');
+        console.error('فشل تحديث الصورة الرمزية.');
         console.error(error);
       }
     });
@@ -67,7 +66,7 @@ export default function ProfilePage() {
     if (!imageToSet) return;
     document.body.style.setProperty('--app-background-image', `url(${imageToSet.imageUrl})`);
     localStorage.setItem('app-background-image', imageToSet.imageUrl);
-    toast.success('تم تعيين الخلفية الجديدة!');
+    console.log('تم تعيين الخلفية الجديدة!');
     setSelectedImage(null);
   };
 
@@ -75,7 +74,7 @@ export default function ProfilePage() {
   const handleGenerateAvatar = async () => {
     if (!avatarPrompt.trim() || !user) return;
     setIsGenerating(true);
-    const toastId = toast.loading('يتم إنشاء الصورة الرمزية...');
+    console.log('يتم إنشاء الصورة الرمزية...');
     try {
         const { imageUrl } = await generateAvatar({ prompt: avatarPrompt });
         const newAvatar: ImagePlaceholder = {
@@ -90,11 +89,11 @@ export default function ProfilePage() {
         await upsertUser({ name: user.name, newAvatar: newAvatar });
         
         setAvatarPrompt('');
-        toast.success("تم إنشاء الصورة الرمزية! يمكنك الآن تحديدها وتعيينها.", { id: toastId });
+        console.log("تم إنشاء الصورة الرمزية! يمكنك الآن تحديدها وتعيينها.");
 
     } catch (error) {
         console.error("Avatar generation failed:", error);
-        toast.error("فشل إنشاء الصورة. يرجى المحاولة مرة أخرى.", { id: toastId });
+        console.error("فشل إنشاء الصورة. يرجى المحاولة مرة أخرى.");
     } finally {
         setIsGenerating(false);
     }

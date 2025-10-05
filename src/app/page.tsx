@@ -19,7 +19,6 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { AppUser } from '@/lib/firebase-service';
-import toast from 'react-hot-toast';
 
 
 const LoginForm = () => {
@@ -32,7 +31,7 @@ const LoginForm = () => {
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim() || !password.trim()) {
-            toast.error("الرجاء إدخال الاسم وكلمة المرور.");
+            console.error("الرجاء إدخال الاسم وكلمة المرور.");
             return;
         }
         setIsLoading(true);
@@ -41,7 +40,7 @@ const LoginForm = () => {
             setUser(loggedInUser);
             router.push('/lobby');
         } catch (error: any) {
-            toast.error(error.message || "فشل تسجيل الدخول. يرجى التحقق من بياناتك.");
+            console.error(error.message || "فشل تسجيل الدخول. يرجى التحقق من بياناتك.");
             setIsLoading(false);
         }
     };
@@ -94,11 +93,11 @@ const RegisterForm = () => {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         if (password !== confirmPassword) {
-            toast.error("كلمتا المرور غير متطابقتين.");
+            console.error("كلمتا المرور غير متطابقتين.");
             return;
         }
         if (!name.trim() || !password.trim()) {
-            toast.error("الاسم وكلمة المرور حقول إلزامية.");
+            console.error("الاسم وكلمة المرور حقول إلزامية.");
             return;
         }
 
@@ -118,7 +117,7 @@ const RegisterForm = () => {
             setUser(registeredUser);
             router.push('/lobby');
         } catch (error: any) {
-            toast.error(error.message || "فشل إنشاء الحساب.");
+            console.error(error.message || "فشل إنشاء الحساب.");
             setIsLoading(false);
         }
     };
