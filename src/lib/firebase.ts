@@ -12,10 +12,17 @@ const firebaseConfig = {
   "appId": "1:441437458465:web:e567aaf8547cf859099360"
 };
 
+let app: FirebaseApp;
+let database: Database;
 
-// Initialize Firebase
-const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const database: Database = getDatabase(app);
+if (!getApps().length) {
+    app = initializeApp(firebaseConfig);
+} else {
+    app = getApp();
+}
+
+database = getDatabase(app);
+
 
 const getAnalyticsInstance = async () => {
     if (typeof window !== 'undefined') {
