@@ -991,7 +991,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
             const disconnectRef = onDisconnect(memberRef);
             disconnectRef.remove().then(() => {
-                sendSystemMessage(`${user.name} غادر الغرفة`);
                 // This will run when the client disconnects uncleanly
                 get(ref(database, `rooms/${roomId}/members`)).then(snapshot => {
                     const remainingMembers: Member[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
@@ -1067,11 +1066,12 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
             
             // Graceful leave
-            remove(memberRefOnUnmount);
+            remove(memberRefOnUnmount).then(() => {
+                sendSystemMessage(`${user.name} غادر الغرفة`);
+            });
             if (userSeat) {
                 remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
             }
-            sendSystemMessage(`${user.name} غادر الغرفة`);
             
             onDisconnect(memberRef).cancel();
             onDisconnect(hostRef).cancel();
