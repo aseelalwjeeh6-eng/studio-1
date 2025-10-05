@@ -12,11 +12,11 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit } from 'lucide-react';
+import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
-import { searchYoutube } from '@/ai/flows/youtube-search-flow';
+import { searchYoutube, YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 import Image from 'next/image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '../ui/input';
@@ -80,20 +80,6 @@ export type PlayerState = {
     seekTime: number;
     timestamp: number;
     volume: number;
-}
-
-interface YouTubeVideo {
-  id: { videoId: string };
-  snippet: {
-    title: string;
-    description: string;
-    thumbnails: {
-      default: { url: string };
-      medium: { url: string };
-      high: { url: string };
-    };
-    channelTitle: string;
-  };
 }
 
 const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwitchToVideo, onSwitchToPlayer, videoMode, onInviteClick, onSettingsClick, roomName, hostName, canControl }: { onSearchClick: () => void; onPlaylistClick: () => void; roomId: string; onLeaveRoom: () => void, onSwitchToVideo: () => void; onSwitchToPlayer: () => void; videoMode: boolean; onInviteClick: () => void; onSettingsClick: () => void; roomName?: string; hostName: string; canControl: boolean; }) => {
@@ -252,7 +238,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     setPinError(false);
     if (pin.length === 4) {
         if (pin === roomPassword) {
-            console.log("تم الدخول بنجاح!");
             onCorrectPassword();
             setIsAuthenticated(true);
         } else {
@@ -677,6 +662,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     console.error('الخدمة قيد التطوير سيتم تجهيزها قريبا');
   };
 
+  const parseDuration = (duration: string) => {
+    if (!duration) return '0:00';
+    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return '0:00';
+    const hours = parseInt(match[1] || '0');
+    const minutes = parseInt(match[2] || '0');
+    const seconds = parseInt(match[3] || '0');
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   if (!isAuthenticated) {
     return (
         <Dialog open={!isAuthenticated} onOpenChange={(open) => { if(!open) router.push('/lobby')}}>
@@ -859,10 +857,16 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             </div>
             <div className="space-y-2 text-center">
                  <Label htmlFor="room-pin">
-                    كلمة المرور (4 أرقام - اتركها فارغة للإزالة)
+                    كلمة المرور (4 أرقام)
                 </Label>
-                 <div className="flex justify-center">
+                 <div className="flex justify-center flex-col items-center gap-2">
                     <NumericKeypad pin={tempPin} onPinChange={setTempPin} pinLength={4} />
+                    {tempPin && (
+                        <Button variant="destructive" onClick={() => setTempPin('')} className="w-44">
+                            <Unlock className="me-2" />
+                            فتح الغرفة (إلغاء القفل)
+                        </Button>
+                    )}
                 </div>
             </div>
              <div className="grid grid-cols-4 items-center gap-4">
@@ -993,7 +997,16 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                         fill
                                         className="object-cover"
                                     />
-                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-2">
+                                        {video.contentDetails?.duration && (
+                                            <Badge
+                                                variant="secondary"
+                                                className="absolute bottom-2 right-2 backdrop-blur-sm"
+                                            >
+                                               {parseDuration(video.contentDetails.duration)}
+                                            </Badge>
+                                        )}
+                                     </div>
                                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <Play className="w-16 h-16 text-white/80"/>
                                      </div>

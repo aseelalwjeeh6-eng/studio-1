@@ -9,7 +9,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 const YoutubeSearchInputSchema = z.object({
   query: z.string().describe('The search query for YouTube.'),
@@ -36,7 +36,12 @@ const YoutubeVideoSchema = z.object({
       }),
     }),
   }),
+  contentDetails: z.object({
+    duration: z.string(),
+  }).optional(),
 });
+export type YouTubeVideo = z.infer<typeof YoutubeVideoSchema>;
+
 
 const YoutubeSearchOutputSchema = z.object({
   items: z.array(YoutubeVideoSchema),
@@ -48,18 +53,43 @@ async function doYoutubeSearch(query: string): Promise<YoutubeSearchOutput> {
   if (!apiKey) {
     throw new Error('YOUTUBE_API_KEY is not set');
   }
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(
     query
   )}&key=${apiKey}&type=video`;
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`YouTube API request failed with status ${response.status}: ${errorBody}`);
+    const searchResponse = await fetch(searchUrl);
+    if (!searchResponse.ok) {
+      const errorBody = await searchResponse.text();
+      throw new Error(`YouTube API search request failed with status ${searchResponse.status}: ${errorBody}`);
     }
-    const data = await response.json();
-    return YoutubeSearchOutputSchema.parse(data);
+    const searchData = await searchResponse.json();
+    
+    const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
+    
+    if (!videoIds) {
+      return { items: [] };
+    }
+
+    const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${apiKey}`;
+    const detailsResponse = await fetch(detailsUrl);
+    if (!detailsResponse.ok) {
+        throw new Error(`YouTube API details request failed with status ${detailsResponse.status}`);
+    }
+    const detailsData = await detailsResponse.json();
+
+    const durationsMap = new Map(detailsData.items.map((item: any) => [item.id, item.contentDetails.duration]));
+
+    const mergedItems = searchData.items.map((item: any) => ({
+      ...item,
+      contentDetails: {
+        duration: durationsMap.get(item.id.videoId) || 'PT0S',
+      }
+    }));
+    
+    const parsedData = YoutubeSearchOutputSchema.parse({ items: mergedItems });
+    return parsedData;
+
   } catch (error) {
     console.error('Error searching YouTube:', error);
     throw new Error('Failed to search YouTube.');
