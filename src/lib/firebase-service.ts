@@ -336,4 +336,3 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
         await set(roomRef, roomData);
     }
 };
-

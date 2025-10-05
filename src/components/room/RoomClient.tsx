@@ -674,7 +674,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   const handleSwitchToVideoClick = () => {
-    console.log('الخدمة قيد التطوير سيتم تجهيزها قريبا');
+    console.error('الخدمة قيد التطوير سيتم تجهيزها قريبا');
   };
 
   if (!isAuthenticated) {
