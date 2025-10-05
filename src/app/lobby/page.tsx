@@ -12,6 +12,8 @@ import { database } from '@/lib/firebase';
 import { ref, onValue, off, goOnline } from 'firebase/database';
 import Hearts from '@/components/shared/Hearts';
 import { createRoom } from '@/lib/firebase-service';
+import { v4 as uuidv4 } from 'uuid';
+import toast from 'react-hot-toast';
 
 interface RoomData {
   id: string;
@@ -62,24 +64,21 @@ export default function LobbyPage() {
     return () => off(roomsRef, 'value', listener);
   }, []);
 
-  const handleGoToMyRoom = async () => {
+  const handleCreateRoom = async () => {
     if (!user || isCreatingRoom) return;
     
     setIsCreatingRoom(true);
-    
-    const userRoomId = user.name;
+    const newRoomId = uuidv4();
     
     try {
       await createRoom({
         hostName: user.name,
-        roomId: userRoomId,
+        roomId: newRoomId,
       });
-      // Move router.push here to ensure room is created before navigating
-      router.push(`/rooms/${userRoomId}`);
+      router.push(`/rooms/${newRoomId}`);
     } catch (error) {
-      console.error("Failed to create/go to room:", error);
-      // Optionally show a toast message to the user
-      alert('Failed to create room.');
+      console.error("Failed to create room:", error);
+      toast.error('فشل في إنشاء الغرفة.');
       setIsCreatingRoom(false);
     }
   };
@@ -108,7 +107,7 @@ export default function LobbyPage() {
             ردهة السينما
           </h1>
           <p className="mt-4 text-lg text-muted-foreground drop-shadow-md">
-            اذهب إلى غرفتك الخاصة أو انضم إلى أصدقائك.
+            قم بإنشاء غرفة جديدة أو انضم إلى أصدقائك.
           </p>
         </div>
 
@@ -117,21 +116,21 @@ export default function LobbyPage() {
                 <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                        <Clapperboard className="text-accent" />
-                        <span>غرفتي الخاصة</span>
+                        <PlusCircle className="text-accent" />
+                        <span>إنشاء غرفة جديدة</span>
                         </CardTitle>
                         <CardDescription>
-                        اذهب إلى غرفتك الخاصة ودعُ أصدقائك.
+                        ابدأ غرفة مشاهدة جديدة وادعُ أصدقائك.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Button onClick={handleGoToMyRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
+                        <Button onClick={handleCreateRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
                         {isCreatingRoom ? (
                             <Loader2 className="me-2 h-5 w-5 animate-spin" />
                         ) : (
-                            <DoorOpen className="me-2 h-5 w-5" />
+                            <Clapperboard className="me-2 h-5 w-5" />
                         )}
-                         الذهاب إلى غرفتي
+                         إنشاء غرفة
                         </Button>
                     </CardContent>
                 </Card>
@@ -208,3 +207,5 @@ export default function LobbyPage() {
     </div>
   );
 }
+
+    
