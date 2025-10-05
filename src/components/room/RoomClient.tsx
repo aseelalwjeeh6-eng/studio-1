@@ -29,6 +29,7 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
 import { Label } from '../ui/label';
+import { Badge } from '../ui/badge';
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
 
@@ -1129,6 +1130,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     const connectedRef = ref(database, '.info/connected');
 
     const setupRoom = async () => {
+      try {
         const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
 
         if (!isMounted) return;
@@ -1196,33 +1198,26 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         })();
 
         const tokenFetchPromise = (async () => {
-            try {
-                const res = await fetch(`/api/livekit?room=${roomId}&username=${user.name}`);
-                if (!res.ok) {
-                    const errorText = await res.text();
-                    throw new Error(`Failed to fetch token: ${res.statusText} - ${errorText}`);
-                }
-                const data = await res.json();
-                if (isMounted) {
-                    setToken(data.token);
-                }
-            } catch (error) {
-                 if (isMounted) {
-                    console.error("Error fetching LiveKit token:", error);
-                    console.error('فشل في الحصول على رمز الدخول للغرفة الصوتية.');
-                 }
+            const res = await fetch(`/api/livekit?room=${roomId}&username=${user.name}`);
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`Failed to fetch token: ${res.statusText} - ${errorText}`);
+            }
+            const data = await res.json();
+            if (isMounted) {
+                setToken(data.token);
             }
         })();
+        
+        await Promise.all([presencePromise, tokenFetchPromise]);
 
-        try {
-            await Promise.all([presencePromise, tokenFetchPromise]);
-        } catch (error) {
-            if (isMounted) {
-                console.error("Error setting up room:", error);
-                console.error('فشل في تهيئة الغرفة.');
-                router.push('/lobby');
-            }
+      } catch (error) {
+        if (isMounted) {
+            console.error("Error setting up room:", error);
+            console.error('فشل في تهيئة الغرفة. قد تكون هناك مشكلة في الاتصال.');
+            // We don't push to lobby, just log the error to avoid kicking the user out for a temporary network issue.
         }
+      }
     };
 
     setupRoom();
