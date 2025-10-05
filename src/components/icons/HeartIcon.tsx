@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export function SosoIcon({ className }: { className?: string }) {
+export function HeartIcon({ className }: { className?: string }) {
   return (
     <svg
       className={cn("w-8 h-8", className)}

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useState, useEffect } from 'react';
-import { SosoIcon } from '@/components/icons/SosoIcon';
+import { HeartIcon } from '@/components/icons/HeartIcon';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -198,7 +198,7 @@ export function MainHeader() {
           className="flex items-center gap-2"
           aria-label="Home"
         >
-          <SosoIcon className="h-10 w-10 text-accent" />
+          <HeartIcon className="h-10 w-10 text-accent" />
           <span className="hidden sm:inline-block font-headline text-2xl font-bold text-foreground">
             اصيل سينما
           </span>

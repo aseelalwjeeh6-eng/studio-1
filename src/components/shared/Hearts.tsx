@@ -19,7 +19,7 @@ const Hearts = () => {
     const createElements = () => {
       const newElements = Array.from({ length: 25 }).map((_, i) => {
         const isHeart = Math.random() > 0.3;
-        const content = isHeart ? '❤' : Math.random() > 0.5 ? 'aseel' : 'soso';
+        const content = isHeart ? '❤' : Math.random() > 0.5 ? 'أصيل' : 'سينما';
         const size = isHeart ? Math.random() * 20 + 10 : Math.random() * 10 + 12;
         const duration = Math.random() * 5 + 8;
         const delay = Math.random() * 10;

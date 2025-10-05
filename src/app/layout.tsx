@@ -15,7 +15,7 @@ const alegreya = Alegreya({
 });
 
 export const metadata: Metadata = {
-  title: 'اصيل سينما – Aseel SOSO',
+  title: 'اصيل سينما',
   description: 'منصة مشاهدة أفلام للعشاق',
   manifest: '/manifest.json',
 };

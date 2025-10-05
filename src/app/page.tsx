@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { SosoIcon } from '@/components/icons/SosoIcon';
+import { HeartIcon } from '@/components/icons/HeartIcon';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -216,7 +216,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md bg-card/50 backdrop-blur-lg border-accent/20">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4">
-            <SosoIcon className="h-20 w-20 text-accent" />
+            <HeartIcon className="h-20 w-20 text-accent" />
           </div>
           <CardTitle className="font-headline text-4xl text-foreground">اصيل سينما</CardTitle>
           <CardDescription className="text-muted-foreground text-lg">
