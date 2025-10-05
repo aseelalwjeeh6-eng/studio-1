@@ -24,19 +24,22 @@ const ViewerInfo = ({ members }: ViewerInfoProps) => {
     <TooltipProvider>
     <div className="w-full bg-card/50 backdrop-blur-lg rounded-lg p-3 flex items-center justify-between text-sm">
         <div className='flex items-center -space-x-4'>
-            {displayedViewers.map(member => (
-                <Tooltip key={member.name}>
-                    <TooltipTrigger>
-                        <Avatar className="w-12 h-12 border-2 border-background">
-                            <AvatarImage src={getAvatar(member)?.imageUrl} alt={member.name} />
-                            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <p>{member.name}</p>
-                    </TooltipContent>
-                </Tooltip>
-            ))}
+            {displayedViewers.map(member => {
+                if (!member || !member.name) return null;
+                return (
+                    <Tooltip key={member.name}>
+                        <TooltipTrigger>
+                            <Avatar className="w-12 h-12 border-2 border-background">
+                                <AvatarImage src={getAvatar(member)?.imageUrl} alt={member.name} />
+                                <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>{member.name}</p>
+                        </TooltipContent>
+                    </Tooltip>
+                );
+            })}
              {hiddenViewersCount > 0 && (
                 <Tooltip>
                     <TooltipTrigger>
