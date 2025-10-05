@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface RoomData {
   id: string;
@@ -23,6 +24,7 @@ interface RoomData {
   host: string;
   memberCount: number;
   backgroundUrl?: string;
+  avatarUrl?: string;
 }
 
 export default function LobbyPage() {
@@ -57,6 +59,7 @@ export default function LobbyPage() {
               host: room.host,
               memberCount: memberCount,
               backgroundUrl: room.backgroundUrl,
+              avatarUrl: room.avatarUrl
             };
           })
           .filter(room => room.memberCount > 0); 
@@ -186,14 +189,10 @@ export default function LobbyPage() {
                                 {activeRooms.map(room => (
                                     <div key={room.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                                         <div className="flex items-center gap-3">
-                                            <div className="relative w-20 h-12 rounded-md overflow-hidden">
-                                                <Image 
-                                                    src={room.backgroundUrl || PlaceHolderImages.find(p => p.id === 'room-bg-1')?.imageUrl || ''}
-                                                    alt={room.name || `غرفة ${room.host}`}
-                                                    fill
-                                                    className="object-cover"
-                                                />
-                                            </div>
+                                             <Avatar className="h-12 w-12">
+                                                <AvatarImage src={room.avatarUrl || PlaceHolderImages.find(p => p.id === 'room-bg-1')?.imageUrl || ''} alt={room.name || `غرفة ${room.host}`} />
+                                                <AvatarFallback>{(room.name || `غرفة ${room.host}`).charAt(0)}</AvatarFallback>
+                                             </Avatar>
                                             <div>
                                                 <p className="font-bold text-foreground truncate max-w-[150px]">{room.name || `غرفة ${room.host}`}</p>
                                                 <p className="text-sm text-muted-foreground flex items-center gap-2">
