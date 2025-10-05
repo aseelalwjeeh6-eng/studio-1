@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -10,7 +11,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check } from 'lucide-react';
+import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -27,7 +28,40 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { Label } from '../ui/label';
 
+const NumericKeypad = ({ onPinChange, pinLength }: { onPinChange: (pin: string) => void; pinLength: number }) => {
+    const [pin, setPin] = useState('');
+
+    const handleKeyClick = (key: string) => {
+        let newPin = pin;
+        if (key === 'backspace') {
+            newPin = newPin.slice(0, -1);
+        } else if (pin.length < pinLength) {
+            newPin += key;
+        }
+        setPin(newPin);
+        onPinChange(newPin);
+    };
+
+    return (
+        <div className="flex flex-col items-center gap-4">
+            <div className="flex gap-3">
+                {Array.from({ length: pinLength }).map((_, i) => (
+                    <div key={i} className={`w-10 h-12 rounded-md border-2 ${pin.length > i ? 'bg-accent/30 border-accent' : 'bg-input'}`} />
+                ))}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+                {[...Array(9).keys()].map(i => i + 1).map(num => (
+                    <Button key={num} variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick(num.toString())}>{num}</Button>
+                ))}
+                <div />
+                <Button variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick('0')}>0</Button>
+                <Button variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick('backspace')}>⌫</Button>
+            </div>
+        </div>
+    );
+};
 
 export type Member = { 
   name: string;
@@ -60,7 +94,7 @@ interface YouTubeVideo {
   };
 }
 
-const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwitchToVideo, onSwitchToPlayer, videoMode, onInviteClick, onBackgroundClick, canControl }: { onSearchClick: () => void; onPlaylistClick: () => void; roomId: string; onLeaveRoom: () => void, onSwitchToVideo: () => void; onSwitchToPlayer: () => void; videoMode: boolean; onInviteClick: () => void; onBackgroundClick: () => void; canControl: boolean; }) => {
+const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwitchToVideo, onSwitchToPlayer, videoMode, onInviteClick, onSettingsClick, roomName, hostName, canControl }: { onSearchClick: () => void; onPlaylistClick: () => void; roomId: string; onLeaveRoom: () => void, onSwitchToVideo: () => void; onSwitchToPlayer: () => void; videoMode: boolean; onInviteClick: () => void; onSettingsClick: () => void; roomName?: string; hostName: string; canControl: boolean; }) => {
     const { user } = useUserSession();
     const avatar = PlaceHolderImages.find(p => p.id === user?.avatarId) ?? PlaceHolderImages[0];
 
@@ -79,9 +113,9 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                             دعوة أصدقاء
                         </DropdownMenuItem>
                         {canControl && (
-                            <DropdownMenuItem onClick={onBackgroundClick}>
-                                <Wallpaper className="me-2"/>
-                                تغيير الخلفية
+                            <DropdownMenuItem onClick={onSettingsClick}>
+                                <Settings className="me-2"/>
+                                إعدادات الغرفة
                             </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
@@ -115,7 +149,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
             )}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className='text-right'>
-                    <p className='font-bold text-foreground'>غرفة المشاهدة</p>
+                    <p className='font-bold text-foreground truncate max-w-[150px] sm:max-w-xs'>{roomName || `غرفة ${hostName}`}</p>
                     <p>ID: {roomId.slice(0,10)}...</p>
                 </div>
                 <Avatar>
@@ -127,7 +161,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void }) => {
+const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void }) => {
   const router = useRouter();
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -136,14 +170,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [hostName, setHostName] = useState('');
+  const [roomName, setRoomName] = useState('');
   const [moderators, setModerators] = useState<string[]>([]);
   const [roomBackground, setRoomBackground] = useState<string | null>(null);
   
   const [videoMode, setVideoMode] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(!roomPassword);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -158,6 +197,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
   
   const [previewVideo, setPreviewVideo] = useState<YouTubeVideo | null>(null);
   const previewPlayerRef = useRef<YouTubePlayer | null>(null);
+  
+  // Room settings state
+  const [tempRoomName, setTempRoomName] = useState('');
+  const [tempPin, setTempPin] = useState('');
 
   
   const { room } = useLiveKitRoom();
@@ -196,6 +239,24 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
     fetchFriendData();
   }, [user]);
 
+  const handlePinChange = (pin: string) => {
+    setPinInput(pin);
+    setPinError(false);
+    if (pin.length === 4) {
+        if (pin === roomPassword) {
+            toast.success("تم الدخول بنجاح!");
+            onCorrectPassword();
+            setIsAuthenticated(true);
+        } else {
+            toast.error("كلمة المرور غير صحيحة.");
+            setPinError(true);
+            setTimeout(() => {
+                setPinInput('');
+                setPinError(false);
+            }, 800);
+        }
+    }
+  }
 
   const handleLeaveRoom = () => {
     router.push('/lobby');
@@ -231,6 +292,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
         
         const videoUrlRef = ref(database, `rooms/${roomId}/videoUrl`);
         listeners.push(onValue(videoUrlRef, (snapshot) => setVideoUrl(snapshot.val() || '')));
+        
+        const roomNameRef = ref(database, `rooms/${roomId}/name`);
+        listeners.push(onValue(roomNameRef, (snapshot) => setRoomName(snapshot.val() || '')));
         
         const backgroundUrlRef = ref(database, `rooms/${roomId}/backgroundUrl`);
         listeners.push(onValue(backgroundUrlRef, (snapshot) => setRoomBackground(snapshot.val() || null)));
@@ -502,11 +566,34 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
       toast.error("فشل في جلب قائمة الأصدقاء.");
     }
   };
+  
+  const handleOpenSettingsDialog = async () => {
+    if (!canControl) return;
+    setTempRoomName(roomName || `غرفة ${hostName}`);
+    setTempPin(roomPassword || '');
+    setIsSettingsOpen(true);
+  };
+
+  const handleSaveSettings = async () => {
+    if (!canControl) return;
+    const updates: { [key: string]: any } = {};
+    if (tempRoomName !== (roomName || `غرفة ${hostName}`)) {
+      updates[`/rooms/${roomId}/name`] = tempRoomName;
+    }
+    if (tempPin !== (roomPassword || '')) {
+      updates[`/rooms/${roomId}/password`] = tempPin;
+    }
+    if (Object.keys(updates).length > 0) {
+      await update(ref(database), updates);
+      toast.success("تم حفظ إعدادات الغرفة.");
+    }
+    setIsSettingsOpen(false);
+  };
 
   const handleSendInvitation = async (recipientName: string) => {
     if (!user) return;
     try {
-        await sendRoomInvitation(user.name, recipientName, roomId, `غرفة ${hostName}`);
+        await sendRoomInvitation(user.name, recipientName, roomId, roomName || `غرفة ${hostName}`);
         setInvitedFriends(prev => new Set(prev).add(recipientName));
         toast.success(`تمت دعوة ${recipientName} إلى الغرفة.`);
     } catch (error: any) {
@@ -574,6 +661,27 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
     });
   };
 
+  if (!isAuthenticated) {
+    return (
+        <Dialog open={!isAuthenticated}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle className="text-center text-2xl">الغرفة مقفلة</DialogTitle>
+                    <DialogDescription className="text-center">
+                        الرجاء إدخال كلمة المرور المكونة من 4 أرقام للدخول.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className={cn(pinError ? 'animate-shake' : '')}>
+                    <NumericKeypad onPinChange={handlePinChange} pinLength={4} />
+                </div>
+                 <DialogFooter>
+                    <Button variant="outline" onClick={() => router.push('/lobby')}>العودة إلى الردهة</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-full bg-background items-center">
         {roomBackground && (
@@ -597,7 +705,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
                 onSwitchToPlayer={() => handleSetVideoMode(false)}
                 videoMode={videoMode}
                 onInviteClick={handleOpenInviteDialog}
-                onBackgroundClick={() => setIsBackgroundOpen(true)}
+                onSettingsClick={handleOpenSettingsDialog}
+                roomName={roomName}
+                hostName={hostName}
                 canControl={canControl}
             />
             <main className="w-full max-w-7xl mx-auto flex-grow flex flex-col gap-4 px-4 pb-4 min-h-0">
@@ -711,6 +821,51 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
            />
            <DialogFooter>
                 <Button variant="outline" onClick={() => setIsPlaylistOpen(false)}>إغلاق</Button>
+           </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>إعدادات الغرفة</DialogTitle>
+            <DialogDescription>تعديل اسم الغرفة وتعيين كلمة مرور.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="room-name" className="text-right">اسم الغرفة</Label>
+                <Input
+                    id="room-name"
+                    value={tempRoomName}
+                    onChange={(e) => setTempRoomName(e.target.value)}
+                    className="col-span-3"
+                />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="room-pin" className="text-right">
+                    كلمة المرور
+                </Label>
+                <Input
+                    id="room-pin"
+                    type="password"
+                    maxLength={4}
+                    value={tempPin}
+                    onChange={(e) => setTempPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="4 أرقام (اختياري)"
+                    className="col-span-3"
+                />
+            </div>
+             <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right col-span-1 pt-2">صورة الغلاف</Label>
+                 <Button onClick={() => { setIsSettingsOpen(false); setIsBackgroundOpen(true); }} variant="outline" className="col-span-3">
+                    <Wallpaper className="me-2"/>
+                    اختر صورة غلاف
+                </Button>
+             </div>
+          </div>
+           <DialogFooter>
+                <Button onClick={handleSaveSettings}>حفظ التغييرات</Button>
+                <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>إلغاء</Button>
            </DialogFooter>
         </DialogContent>
     </Dialog>
@@ -901,6 +1056,8 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   const { user, isLoaded: isUserLoaded } = useUserSession();
   const [token, setToken] = useState('');
   const seatedMembersRef = useRef<SeatedMember[]>([]);
+  const [roomPassword, setRoomPassword] = useState<string | undefined>(undefined);
+  const [passwordChecked, setPasswordChecked] = useState(false);
   
   const [isSeated, setIsSeated] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
@@ -968,8 +1125,12 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             router.push('/lobby');
             return;
         }
+
+        const roomData = roomSnapshot.val();
+        setRoomPassword(roomData.password);
+        setPasswordChecked(true); // Now we know if there is a password or not
         
-        const isReturning = roomSnapshot.val().members?.[user.name];
+        const isReturning = roomData.members?.[user.name];
 
         // Setup presence and fetch LiveKit token in parallel
         const presencePromise = (async () => {
@@ -1086,7 +1247,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     };
 }, [isUserLoaded, user, roomId, router, sendSystemMessage]);
 
-  if (!isUserLoaded || !user) {
+  if (!isUserLoaded || !user || !passwordChecked) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-16 w-16 animate-spin text-accent" />
@@ -1111,7 +1272,13 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       isSeated={isSeated}
       videoMode={videoMode}
     >
-      <RoomLayout roomId={roomId} user={user} sendSystemMessage={sendSystemMessage} />
+      <RoomLayout 
+        roomId={roomId} 
+        user={user} 
+        sendSystemMessage={sendSystemMessage}
+        roomPassword={roomPassword}
+        onCorrectPassword={() => setRoomPassword(undefined)} // Clear password check after correct entry
+      />
     </LiveKitRoom>
   );
 };

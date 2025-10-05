@@ -14,11 +14,15 @@ import Hearts from '@/components/shared/Hearts';
 import { createRoom } from '@/lib/firebase-service';
 import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
+import Image from 'next/image';
+import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 interface RoomData {
   id: string;
+  name?: string;
   host: string;
   memberCount: number;
+  backgroundUrl?: string;
 }
 
 export default function LobbyPage() {
@@ -49,8 +53,10 @@ export default function LobbyPage() {
             const memberCount = room.members ? Object.keys(room.members).length : 0;
             return {
               id: key,
+              name: room.name,
               host: room.host,
               memberCount: memberCount,
+              backgroundUrl: room.backgroundUrl,
             };
           })
           .filter(room => room.memberCount > 0); 
@@ -179,12 +185,22 @@ export default function LobbyPage() {
                             <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
                                 {activeRooms.map(room => (
                                     <div key={room.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
-                                        <div>
-                                            <p className="font-bold text-foreground">غرفة {room.host}</p>
-                                            <p className="text-sm text-muted-foreground flex items-center gap-2">
-                                                <Users className="w-4 h-4" />
-                                                {room.memberCount} {room.memberCount > 1 ? 'أعضاء' : 'عضو'}
-                                            </p>
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative w-20 h-12 rounded-md overflow-hidden">
+                                                <Image 
+                                                    src={room.backgroundUrl || PlaceHolderImages.find(p => p.id === 'room-bg-1')?.imageUrl || ''}
+                                                    alt={room.name || `غرفة ${room.host}`}
+                                                    fill
+                                                    className="object-cover"
+                                                />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-foreground truncate max-w-[150px]">{room.name || `غرفة ${room.host}`}</p>
+                                                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                                    <Users className="w-4 h-4" />
+                                                    {room.memberCount} {room.memberCount > 1 ? 'أعضاء' : 'عضو'}
+                                                </p>
+                                            </div>
                                         </div>
                                         <Button size="sm" onClick={() => router.push(`/rooms/${room.id}`)}>
                                             <LogIn className="me-2 h-4 w-4" />
@@ -207,5 +223,3 @@ export default function LobbyPage() {
     </div>
   );
 }
-
-    

@@ -1,4 +1,5 @@
 
+
 import { database } from './firebase';
 import type { Database } from 'firebase/database';
 import {
@@ -310,6 +311,7 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
     if (!snapshot.exists()) {
         const roomData = {
           host: hostName,
+          name: `غرفة ${hostName}`,
           createdAt: serverTimestamp(),
           videoUrl: '',
           backgroundUrl: '',
