@@ -293,7 +293,7 @@ export const sendRoomInvitation = async (senderName: string, recipientName: stri
         timestamp: Date.now(),
         read: false,
     };
-    await set(newInvitationRef, newInvitation);
+    await set(invitationsRef, newInvitation);
 };
 
 

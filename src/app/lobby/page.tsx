@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -67,17 +68,18 @@ export default function LobbyPage() {
     setIsCreatingRoom(true);
     
     const userRoomId = user.name;
-    router.push(`/rooms/${userRoomId}`);
     
     try {
       await createRoom({
         hostName: user.name,
         roomId: userRoomId,
       });
+      // Move router.push here to ensure room is created before navigating
+      router.push(`/rooms/${userRoomId}`);
     } catch (error) {
       console.error("Failed to create/go to room:", error);
-      // Optionally show a toast message to the user and redirect back
-      router.push('/lobby');
+      // Optionally show a toast message to the user
+      alert('Failed to create room.');
       setIsCreatingRoom(false);
     }
   };
