@@ -640,7 +640,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
   
   const roomBackgrounds = useMemo(() => {
-    return [...PlaceHolderImages.filter(p => p.id.startsWith('room-bg')), ...PlaceHolderImages.filter(p => p.id.startsWith('user-bg'))];
+    return PlaceHolderImages.filter(p => p.id.startsWith('room-bg') || p.id.startsWith('user-bg'));
   }, []);
   
   const handleSetVideoMode = (mode: boolean) => {

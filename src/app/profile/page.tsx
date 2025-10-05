@@ -2,7 +2,7 @@
 
 import useUserSession from '@/hooks/use-user-session';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AppUser } from '@/lib/firebase-service';
 import toast from 'react-hot-toast';
+import { Separator } from '@/components/ui/separator';
 
 export default function ProfilePage() {
   const { user, setUser, isLoaded } = useUserSession();
@@ -54,6 +55,7 @@ export default function ProfilePage() {
         setUser(updatedUser);
         await upsertUser(updatedUser);
         toast.success('تم تحديث الصورة الرمزية بنجاح!');
+        setSelectedImage(null);
       } catch (error) {
         toast.error('فشل تحديث الصورة الرمزية.');
         console.error(error);
@@ -66,6 +68,7 @@ export default function ProfilePage() {
     document.body.style.setProperty('--app-background-image', `url(${imageToSet.imageUrl})`);
     localStorage.setItem('app-background-image', imageToSet.imageUrl);
     toast.success('تم تعيين الخلفية الجديدة!');
+    setSelectedImage(null);
   };
 
 
@@ -82,15 +85,12 @@ export default function ProfilePage() {
             imageHint: 'generated avatar'
         };
 
-        // Update local state immediately for responsiveness
         setGeneratedAvatars(prev => [newAvatar, ...prev]);
-        setSelectedImage(newAvatar);
         
-        // Persist new generated avatar to user's collection in Firebase
         await upsertUser({ name: user.name, newAvatar: newAvatar });
         
         setAvatarPrompt('');
-        toast.success("تم إنشاء الصورة الرمزية! يمكنك الآن تعيينها.", { id: toastId });
+        toast.success("تم إنشاء الصورة الرمزية! يمكنك الآن تحديدها وتعيينها.", { id: toastId });
 
     } catch (error) {
         console.error("Avatar generation failed:", error);
@@ -102,7 +102,16 @@ export default function ProfilePage() {
 
 
   const currentAvatarDetails = [...generatedAvatars, ...PlaceHolderImages].find(p => p.id === user?.avatarId) ?? PlaceHolderImages.find(p => p.id === 'avatar1');
-  const allSelectableImages = [...generatedAvatars, ...PlaceHolderImages];
+  
+  const selectableAvatars = useMemo(() => 
+    [...generatedAvatars, ...PlaceHolderImages.filter(p => p.id.startsWith('avatar'))],
+    [generatedAvatars]
+  );
+  
+  const selectableBackgrounds = useMemo(() => 
+    PlaceHolderImages.filter(p => p.id.startsWith('bg') || p.id.startsWith('user-bg') || p.id.startsWith('room-bg')),
+    []
+  );
 
   if (!isLoaded || !user) {
     return (
@@ -111,6 +120,10 @@ export default function ProfilePage() {
       </div>
     );
   }
+
+  const isSelectedImageAvatar = selectedImage && (selectedImage.id.startsWith('avatar') || selectedImage.id.startsWith('gen'));
+  const isSelectedImageBackground = selectedImage && !isSelectedImageAvatar;
+
 
   return (
     <div className="flex flex-col items-center justify-center pt-8 gap-12">
@@ -160,7 +173,7 @@ export default function ProfilePage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ImageIcon className="text-accent" />
-            <span>اختر صورتك</span>
+            <span>تخصيص المظهر</span>
           </CardTitle>
           <CardDescription>
             اختر صورة لتعيينها كصورة رمزية أو كخلفية للتطبيق.
@@ -174,53 +187,100 @@ export default function ProfilePage() {
                   alt={selectedImage.description}
                   width={100}
                   height={100}
-                  className="rounded-lg aspect-square object-cover border-4 border-accent"
+                  className={cn(
+                    "rounded-lg object-cover border-4 border-accent",
+                     isSelectedImageAvatar ? 'aspect-square rounded-full' : 'aspect-video'
+                  )}
                 />
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button onClick={() => handleUpdateAvatar(selectedImage)} disabled={isAvatarUpdatePending}>
-                    {isAvatarUpdatePending ? <Loader2 className="animate-spin me-2" /> : <User className="me-2" />}
-                    تعيين كصورة رمزية
-                  </Button>
-                  <Button onClick={() => handleSetBackground(selectedImage)} variant="secondary">
-                     <Wallpaper className="me-2" />
-                    تعيين كخلفية
-                  </Button>
+                  {isSelectedImageAvatar && (
+                    <Button onClick={() => handleUpdateAvatar(selectedImage)} disabled={isAvatarUpdatePending}>
+                      {isAvatarUpdatePending ? <Loader2 className="animate-spin me-2" /> : <User className="me-2" />}
+                      تعيين كصورة رمزية
+                    </Button>
+                  )}
+                  {isSelectedImageBackground && (
+                    <Button onClick={() => handleSetBackground(selectedImage)} variant="secondary">
+                       <Wallpaper className="me-2" />
+                      تعيين كخلفية
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
-             {allSelectableImages.map((img) => {
-              const isSelectedForAction = selectedImage?.id === img.id;
-              const isCurrentAvatar = currentAvatarId === img.id;
-              const isAvatar = img.id.startsWith('avatar') || img.id.startsWith('gen');
+            
+            <div className='space-y-6'>
+                <div>
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <UserIcon className="text-accent"/>
+                    الصور الرمزية
+                  </h3>
+                  <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 gap-4">
+                     {selectableAvatars.map((img) => {
+                      const isSelectedForAction = selectedImage?.id === img.id;
+                      const isCurrentAvatar = currentAvatarId === img.id;
 
-              return (
-                <div
-                  key={img.id}
-                  className="relative cursor-pointer group"
-                  onClick={() => setSelectedImage(img)}
-                >
-                  <Image
-                    src={img.imageUrl}
-                    alt={img.description}
-                    width={100}
-                    height={100}
-                    className={cn(
-                      "w-full h-full aspect-square object-cover border-4 transition-all",
-                      isAvatar ? "rounded-full" : "rounded-lg",
-                      isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50"
-                    )}
-                    data-ai-hint={img.imageHint}
-                  />
-                  {isCurrentAvatar && isAvatar && !isSelectedForAction && (
-                    <div className="absolute -top-1 -right-1 bg-primary rounded-full p-1 text-primary-foreground" title="الصورة الرمزية الحالية">
-                        <CheckCircle className="w-5 h-5" />
-                    </div>
-                   )}
+                      return (
+                        <div
+                          key={img.id}
+                          className="relative cursor-pointer group"
+                          onClick={() => setSelectedImage(img)}
+                        >
+                          <Image
+                            src={img.imageUrl}
+                            alt={img.description}
+                            width={100}
+                            height={100}
+                            className={cn(
+                              "w-full h-full aspect-square object-cover border-4 transition-all rounded-full",
+                              isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50"
+                            )}
+                            data-ai-hint={img.imageHint}
+                          />
+                          {isCurrentAvatar && !isSelectedForAction && (
+                            <div className="absolute -top-1 -right-1 bg-primary rounded-full p-1 text-primary-foreground" title="الصورة الرمزية الحالية">
+                                <CheckCircle className="w-5 h-5" />
+                            </div>
+                           )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              );
-            })}
-          </div>
+
+                <Separator />
+                
+                <div>
+                   <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                     <Wallpaper className="text-accent"/>
+                     خلفيات التطبيق
+                   </h3>
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                     {selectableBackgrounds.map((img) => {
+                       const isSelectedForAction = selectedImage?.id === img.id;
+                       return (
+                        <div
+                          key={img.id}
+                          className="relative cursor-pointer group"
+                          onClick={() => setSelectedImage(img)}
+                        >
+                          <Image
+                            src={img.imageUrl}
+                            alt={img.description}
+                            width={1920}
+                            height={1080}
+                            className={cn(
+                              "w-full h-full aspect-video object-cover border-4 transition-all rounded-lg",
+                              isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50"
+                            )}
+                            data-ai-hint={img.imageHint}
+                          />
+                        </div>
+                       );
+                     })}
+                   </div>
+                </div>
+            </div>
         </CardContent>
       </Card>
     </div>
