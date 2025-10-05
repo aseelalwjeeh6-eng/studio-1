@@ -318,7 +318,7 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
         } catch (error) {
             console.error("Failed to generate room avatar:", error);
             // Fallback to a placeholder if generation fails
-            avatarUrl = 'https://picsum.photos/seed/default-room/200/200';
+            avatarUrl = `https://picsum.photos/seed/${roomId}/200/200`;
         }
 
         const roomData = {
@@ -336,3 +336,4 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
         await set(roomRef, roomData);
     }
 };
+
