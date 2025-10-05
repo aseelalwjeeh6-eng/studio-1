@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -30,8 +31,7 @@ import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { Label } from '../ui/label';
 
-const NumericKeypad = ({ onPinChange, pinLength }: { onPinChange: (pin: string) => void; pinLength: number }) => {
-    const [pin, setPin] = useState('');
+const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
 
     const handleKeyClick = (key: string) => {
         let newPin = pin;
@@ -40,7 +40,6 @@ const NumericKeypad = ({ onPinChange, pinLength }: { onPinChange: (pin: string) 
         } else if (pin.length < pinLength) {
             newPin += key;
         }
-        setPin(newPin);
         onPinChange(newPin);
     };
 
@@ -48,7 +47,9 @@ const NumericKeypad = ({ onPinChange, pinLength }: { onPinChange: (pin: string) 
         <div className="flex flex-col items-center gap-4">
             <div className="flex gap-3">
                 {Array.from({ length: pinLength }).map((_, i) => (
-                    <div key={i} className={`w-10 h-12 rounded-md border-2 ${pin.length > i ? 'bg-accent/30 border-accent' : 'bg-input'}`} />
+                    <div key={i} className={`w-10 h-12 rounded-md border-2 flex items-center justify-center text-2xl ${pin.length > i ? 'bg-accent/30 border-accent' : 'bg-input'}`}>
+                       {pin.length > i ? '•' : ''}
+                    </div>
                 ))}
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -161,7 +162,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void }) => {
+const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -175,7 +176,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [roomBackground, setRoomBackground] = useState<string | null>(null);
   
   const [videoMode, setVideoMode] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(!roomPassword);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
@@ -226,6 +227,12 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }, [localParticipant, participants, user?.name]);
 
   const [friendData, setFriendData] = useState<{ friends: AppUser[]; requests: AppUser[] }>({ friends: [], requests: [] });
+
+  useEffect(() => {
+      if (isPasswordChecked) {
+          setIsAuthenticated(!roomPassword);
+      }
+  }, [isPasswordChecked, roomPassword]);
 
   useEffect(() => {
     const fetchFriendData = async () => {
@@ -294,7 +301,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         listeners.push(onValue(videoUrlRef, (snapshot) => setVideoUrl(snapshot.val() || '')));
         
         const roomNameRef = ref(database, `rooms/${roomId}/name`);
-        listeners.push(onValue(roomNameRef, (snapshot) => setRoomName(snapshot.val() || '')));
+        listeners.push(onValue(roomNameRef, (snapshot) => {
+            const name = snapshot.val() || '';
+            setRoomName(name);
+            setTempRoomName(name);
+        }));
         
         const backgroundUrlRef = ref(database, `rooms/${roomId}/backgroundUrl`);
         listeners.push(onValue(backgroundUrlRef, (snapshot) => setRoomBackground(snapshot.val() || null)));
@@ -569,20 +580,30 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   
   const handleOpenSettingsDialog = async () => {
     if (!canControl) return;
-    setTempRoomName(roomName || `غرفة ${hostName}`);
-    setTempPin(roomPassword || '');
+    // Fetch latest room data when opening settings
+    const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
+    if(roomSnapshot.exists()){
+      const roomData = roomSnapshot.val();
+      setTempRoomName(roomData.name || `غرفة ${hostName}`);
+      setTempPin(roomData.password || '');
+    }
     setIsSettingsOpen(true);
   };
 
   const handleSaveSettings = async () => {
     if (!canControl) return;
     const updates: { [key: string]: any } = {};
-    if (tempRoomName !== (roomName || `غرفة ${hostName}`)) {
+
+    const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
+    const currentRoomData = roomSnapshot.val();
+
+    if (tempRoomName !== (currentRoomData.name || '')) {
       updates[`/rooms/${roomId}/name`] = tempRoomName;
     }
-    if (tempPin !== (roomPassword || '')) {
+    if (tempPin !== (currentRoomData.password || '')) {
       updates[`/rooms/${roomId}/password`] = tempPin;
     }
+    
     if (Object.keys(updates).length > 0) {
       await update(ref(database), updates);
       toast.success("تم حفظ إعدادات الغرفة.");
@@ -663,7 +684,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
   if (!isAuthenticated) {
     return (
-        <Dialog open={!isAuthenticated}>
+        <Dialog open={!isAuthenticated} onOpenChange={(open) => { if(!open) router.push('/lobby')}}>
             <DialogContent className="max-w-sm">
                 <DialogHeader>
                     <DialogTitle className="text-center text-2xl">الغرفة مقفلة</DialogTitle>
@@ -671,12 +692,12 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                         الرجاء إدخال كلمة المرور المكونة من 4 أرقام للدخول.
                     </DialogDescription>
                 </DialogHeader>
-                <div className={cn(pinError ? 'animate-shake' : '')}>
-                    <NumericKeypad onPinChange={handlePinChange} pinLength={4} />
+                <div className={cn("flex justify-center", pinError ? 'animate-shake' : '')}>
+                    <NumericKeypad pin={pinInput} onPinChange={handlePinChange} pinLength={4} />
                 </div>
                  <DialogFooter>
                     <Button variant="outline" onClick={() => router.push('/lobby')}>العودة إلى الردهة</Button>
-                </DialogFooter>
+                 </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -841,19 +862,13 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     className="col-span-3"
                 />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="room-pin" className="text-right">
-                    كلمة المرور
+            <div className="space-y-2 text-center">
+                 <Label htmlFor="room-pin">
+                    كلمة المرور (4 أرقام - اتركها فارغة للإزالة)
                 </Label>
-                <Input
-                    id="room-pin"
-                    type="password"
-                    maxLength={4}
-                    value={tempPin}
-                    onChange={(e) => setTempPin(e.target.value.replace(/\D/g, ''))}
-                    placeholder="4 أرقام (اختياري)"
-                    className="col-span-3"
-                />
+                 <div className="flex justify-center">
+                    <NumericKeypad pin={tempPin} onPinChange={setTempPin} pinLength={4} />
+                </div>
             </div>
              <div className="grid grid-cols-4 items-center gap-4">
                 <Label className="text-right col-span-1 pt-2">صورة الغلاف</Label>
@@ -1156,11 +1171,11 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             disconnectRef.remove().then(() => {
                 // This will run when the client disconnects uncleanly
                 get(ref(database, `rooms/${roomId}/members`)).then(snapshot => {
-                    const remainingMembers: Member[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
-                    if(remainingMembers.length === 0) {
+                    if (!snapshot.exists()) {
                         // If I was the last one, remove the room
                          remove(ref(database, `rooms/${roomId}`));
                     } else {
+                        const remainingMembers: Member[] = Object.values(snapshot.val());
                         // If I was the host, transfer host
                          get(hostRef).then(hostSnapshot => {
                              if (hostSnapshot.val() === user.name) {
@@ -1278,11 +1293,14 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         sendSystemMessage={sendSystemMessage}
         roomPassword={roomPassword}
         onCorrectPassword={() => setRoomPassword(undefined)} // Clear password check after correct entry
+        isPasswordChecked={passwordChecked}
       />
     </LiveKitRoom>
   );
 };
 
 export default RoomClient;
+
+    
 
     
