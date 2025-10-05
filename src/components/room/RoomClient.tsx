@@ -580,9 +580,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   
   const handleOpenSettingsDialog = async () => {
     if (!canControl) return;
-    // Fetch latest room data when opening settings
     const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
-    if(roomSnapshot.exists()){
+    if (roomSnapshot.exists()) {
       const roomData = roomSnapshot.val();
       setTempRoomName(roomData.name || `غرفة ${hostName}`);
       setTempPin(roomData.password || '');
@@ -607,6 +606,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     if (Object.keys(updates).length > 0) {
       await update(ref(database), updates);
       toast.success("تم حفظ إعدادات الغرفة.");
+    } else {
+      toast.info("لا توجد تغييرات لحفظها.");
     }
     setIsSettingsOpen(false);
   };
