@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useState, useEffect, ReactNode, Dispatch, SetStateAction } from 'react';
+import { BackButtonExitGuard } from '@/hooks/useBackButtonExitGuard';
 
 // --- Theme Provider ---
 type Theme = 'dark' | 'light' | 'romantic';
@@ -96,6 +97,7 @@ export const AppProviders = ({ children }: { children: ReactNode }) => {
   return (
     <ThemeProvider>
       <UserProvider>
+        <BackButtonExitGuard />
         {children}
       </UserProvider>
     </ThemeProvider>

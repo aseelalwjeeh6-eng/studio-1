@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 import { AppProviders } from '@/app/providers';
 import Hearts from '@/components/shared/Hearts';
 import Script from 'next/script';
-import { BackButtonExitGuard } from '@/hooks/useBackButtonExitGuard';
 
 const alegreya = Alegreya({
   subsets: ['latin'],
@@ -41,7 +40,6 @@ export default function RootLayout({
           `}
         </Script>
         <AppProviders>
-          <BackButtonExitGuard />
           <Hearts />
           <main>{children}</main>
         </AppProviders>
