@@ -22,8 +22,16 @@ const YoutubeVideoSchema = z.object({
   }),
   snippet: z.object({
     title: z.string(),
+    description: z.string(),
+    channelTitle: z.string(),
     thumbnails: z.object({
       default: z.object({
+        url: z.string(),
+      }),
+      medium: z.object({
+        url: z.string(),
+      }),
+       high: z.object({
         url: z.string(),
       }),
     }),
@@ -40,7 +48,7 @@ async function doYoutubeSearch(query: string): Promise<YoutubeSearchOutput> {
   if (!apiKey) {
     throw new Error('YOUTUBE_API_KEY is not set');
   }
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${encodeURIComponent(
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(
     query
   )}&key=${apiKey}&type=video`;
 

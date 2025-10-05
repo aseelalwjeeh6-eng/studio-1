@@ -91,7 +91,9 @@ interface YouTubeVideo {
     thumbnails: {
       default: { url: string };
       medium: { url: string };
+      high: { url: string };
     };
+    channelTitle: string;
   };
 }
 
@@ -471,7 +473,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         id: video.id.videoId,
         videoId: video.id.videoId,
         title: video.snippet.title,
-        thumbnail: video.snippet.thumbnails.default.url,
+        thumbnail: video.snippet.thumbnails.high.url,
       };
       const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
       set(playlistRef, newItem);
@@ -483,7 +485,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
     let videoId = null;
     let title = url;
-    let thumbnail = `https://picsum.photos/seed/${Math.random()}/120/68`; // generic placeholder
+    let thumbnail = `https://picsum.photos/seed/${Math.random()}/320/180`; // generic placeholder
     
     try {
         const parsedUrl = new URL(url);
@@ -915,116 +917,106 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
     <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-        <DialogContent className="max-w-4xl p-0">
-          <DialogHeader className="p-6 pb-0">
-            <DialogTitle>إضافة فيديو</DialogTitle>
-            <DialogDescription>
-                ابحث في يوتيوب أو الصق رابط فيديو من أي موقع.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="p-6 pt-4 space-y-4">
-            <div className="flex gap-2">
-                <Input
-                    type="text"
-                    placeholder="الصق رابط فيديو هنا..."
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    className="bg-input"
-                />
-                <Button onClick={() => handleAddUrlToPlaylist(urlInput)}><Plus/></Button>
-            </div>
-             <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-border"></div>
-              <span className="flex-shrink mx-4 text-muted-foreground text-xs">أو</span>
-              <div className="flex-grow border-t border-border"></div>
-            </div>
-            <form onSubmit={handleSearchSubmit} className="flex gap-2">
-              <Input
-                type="text"
-                placeholder="ابحث في يوتيوب..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-input"
-                disabled={isSearching}
-              />
-              <Button type="submit" disabled={isSearching}>
-                {isSearching ? <Loader2 className="animate-spin" /> : <Search />}
-              </Button>
-            </form>
-          </div>
-          <div className="px-6 pb-6 max-h-[50vh] overflow-y-auto">
-            {isSearching && (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-accent" />
-              </div>
-            )}
-            {searchError && (
-              <div className="text-center text-destructive py-8">{searchError}</div>
-            )}
-            {!isSearching && !searchError && searchResults.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                {searchHistory.length > 0 ? (
-                  <div>
-                    <h3 className="font-semibold mb-2">سجل البحث الأخير</h3>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {searchHistory.map((term, i) => (
-                        <Button
-                          key={i}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleHistoryClick(term)}
-                        >
-                          <History className="me-2 h-4 w-4" />
-                          {term}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p>ابحث عن فيديو لإضافته إلى قائمة التشغيل.</p>
-                )}
-              </div>
-            )}
-            {searchResults.length > 0 && (
-              <div className="space-y-3">
-                {searchResults.map((video) => (
-                  <div
-                    key={video.id.videoId}
-                    className="flex items-center gap-4 p-2 rounded-lg bg-secondary/50"
-                  >
-                    <Image
-                      src={video.snippet.thumbnails.default.url}
-                      alt={video.snippet.title}
-                      width={120}
-                      height={68}
-                      className="rounded-lg aspect-video object-cover"
+        <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0">
+            <DialogHeader className="p-6 pb-4 border-b">
+                <DialogTitle>البحث عن فيديو وإضافته</DialogTitle>
+                <DialogDescription>
+                    ابحث في يوتيوب أو الصق رابط فيديو من أي موقع.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <form onSubmit={handleSearchSubmit} className="flex gap-2 md:col-span-2">
+                    <Input
+                        type="text"
+                        placeholder="ابحث في يوتيوب..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="bg-input h-11"
+                        disabled={isSearching}
                     />
-                    <div className="flex-grow overflow-hidden">
-                      <h3 className="font-semibold text-foreground truncate">
-                        {video.snippet.title}
-                      </h3>
+                    <Button type="submit" disabled={isSearching} size="lg">
+                        {isSearching ? <Loader2 className="animate-spin" /> : <Search />}
+                    </Button>
+                </form>
+                <div className="flex gap-2">
+                    <Input
+                        type="text"
+                        placeholder="...أو الصق رابط فيديو هنا"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        className="bg-input h-11"
+                    />
+                    <Button onClick={() => handleAddUrlToPlaylist(urlInput)} size="lg" variant="secondary"><Plus/></Button>
+                </div>
+            </div>
+            <div className="flex-grow overflow-y-auto px-6 pb-6">
+                {isSearching && (
+                    <div className="flex justify-center items-center h-full">
+                        <Loader2 className="h-12 w-12 animate-spin text-accent" />
                     </div>
-                     <div className="flex items-center gap-1">
-                        <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setPreviewVideo(video)}
-                        >
-                            <Play className="me-2 h-4 w-4" />
-                            معاينة
-                        </Button>
-                        <Button size="sm" onClick={() => handleAddToPlaylistFromSearch(video)}>
-                            <ListMusic className="me-2 h-4 w-4" />
-                            إضافة
-                        </Button>
+                )}
+                {searchError && (
+                    <div className="flex justify-center items-center h-full text-destructive">{searchError}</div>
+                )}
+                {!isSearching && !searchError && searchResults.length === 0 && (
+                    <div className="flex flex-col justify-center items-center h-full text-muted-foreground text-center">
+                        {searchHistory.length > 0 ? (
+                            <>
+                                <History className="w-16 h-16 mb-4" />
+                                <h3 className="font-bold text-lg text-foreground mb-2">سجل البحث الأخير</h3>
+                                <div className="flex flex-wrap justify-center gap-2">
+                                    {searchHistory.map((term, i) => (
+                                        <Button
+                                            key={i}
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleHistoryClick(term)}
+                                        >
+                                            {term}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </>
+                        ) : (
+                             <>
+                                <Youtube className="w-16 h-16 mb-4" />
+                                <p className="text-lg">ابحث عن فيديو للبدء</p>
+                                <p>شاهد مع أصدقائك أفضل محتوى من يوتيوب.</p>
+                             </>
+                        )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                )}
+                {searchResults.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {searchResults.map((video) => (
+                            <div
+                                key={video.id.videoId}
+                                className="group cursor-pointer"
+                                onClick={() => setPreviewVideo(video)}
+                            >
+                                <div className="relative aspect-video rounded-lg overflow-hidden mb-2 shadow-lg transition-transform duration-200 group-hover:scale-105">
+                                    <Image
+                                        src={video.snippet.thumbnails.high.url}
+                                        alt={video.snippet.title}
+                                        fill
+                                        className="object-cover"
+                                    />
+                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Play className="w-16 h-16 text-white/80"/>
+                                     </div>
+                                </div>
+                                <h3 className="font-semibold text-foreground text-sm line-clamp-2">
+                                    {video.snippet.title}
+                                </h3>
+                                <p className="text-xs text-muted-foreground">{video.snippet.channelTitle}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </DialogContent>
-      </Dialog>
+    </Dialog>
 
 
     {previewVideo && (
@@ -1050,7 +1042,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     />
                 </div>
                  <div className="flex gap-2">
-                    <Button onClick={() => handleAddToPlaylistFromSearch(previewVideo)} variant="secondary" size="lg" className="w-full">
+                    <Button onClick={() => { handleAddToPlaylistFromSearch(previewVideo); setPreviewVideo(null); }} variant="secondary" size="lg" className="w-full">
                         <ListMusic className="me-2" />
                         إضافة إلى القائمة
                     </Button>
@@ -1305,3 +1297,4 @@ export default RoomClient;
     
 
     
+

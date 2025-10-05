@@ -18,13 +18,28 @@ interface PlaylistProps {
   items: PlaylistItem[];
   canControl: boolean;
   onPlay: (videoId: string) => void;
-  onRemove: (videoId: string) => void;
+  onRemove: (itemId: string) => void;
   currentVideoUrl: string;
 }
 
 const Playlist = ({ items, canControl, onPlay, onRemove, currentVideoUrl }: PlaylistProps) => {
 
-  const currentVideoId = currentVideoUrl.includes('v=') ? new URL(currentVideoUrl).searchParams.get('v') : currentVideoUrl;
+  const getYoutubeVideoId = (url: string) => {
+    try {
+        const urlObj = new URL(url);
+        if (urlObj.hostname.includes('youtube.com') || urlObj.hostname === 'youtu.be') {
+            return urlObj.searchParams.get('v') || urlObj.pathname.slice(1);
+        }
+    } catch (e) {
+        // Not a full URL, might just be an ID
+        if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
+            return url;
+        }
+    }
+    return url;
+  }
+
+  const currentVideoId = getYoutubeVideoId(currentVideoUrl);
 
   return (
     <ScrollArea className="h-96">
@@ -57,7 +72,7 @@ const Playlist = ({ items, canControl, onPlay, onRemove, currentVideoUrl }: Play
                             <Play className="w-4 h-4" />
                         </Button>
                     )}
-                    <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => onRemove(item.videoId)}>
+                    <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => onRemove(item.id)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
                     </div>
