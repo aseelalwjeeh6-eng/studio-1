@@ -45,6 +45,7 @@ export type PlayerState = {
     isPlaying: boolean;
     seekTime: number;
     timestamp: number;
+    volume: number;
 }
 
 interface YouTubeVideo {
@@ -364,16 +365,17 @@ const RoomLayout = ({ roomId, user, sendSystemMessage }: { roomId: string, user:
       set(ref(database, `rooms/${roomId}/playerState`), { 
         isPlaying: !!videoIdentifier, 
         seekTime: startTime, 
-        timestamp: serverTimestamp() 
+        timestamp: serverTimestamp(),
+        volume: playerState?.volume ?? 0.8,
       });
     }
-  }, [canControl, roomId]);
+  }, [canControl, roomId, playerState?.volume]);
   
   const handlePlayerStateChange = useCallback((newState: Partial<PlayerState>) => {
     if (canControl) {
         const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
         runTransaction(playerStateRef, (currentState) => {
-            const current = currentState || { isPlaying: false, seekTime: 0 };
+            const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8 };
             return { ...current, ...newState, timestamp: serverTimestamp() };
         });
     }
@@ -1066,12 +1068,11 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
             
             // Graceful leave
-            remove(memberRefOnUnmount).then(() => {
-                sendSystemMessage(`${user.name} غادر الغرفة`);
-            });
             if (userSeat) {
                 remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
             }
+            
+            remove(memberRefOnUnmount);
             
             onDisconnect(memberRef).cancel();
             onDisconnect(hostRef).cancel();
@@ -1116,3 +1117,5 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 };
 
 export default RoomClient;
+
+    

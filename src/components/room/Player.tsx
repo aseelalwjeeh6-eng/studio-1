@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Button } from '@/components/ui/button';
-import { Play, Search, Film, Pause } from 'lucide-react';
+import { Play, Search, Film, Pause, Volume2, Volume1, VolumeX } from 'lucide-react';
 import { PlayerState } from './RoomClient';
 import { Slider } from '../ui/slider';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
 interface PlayerProps {
   videoUrl: string;
@@ -84,6 +85,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | null>(null);
@@ -102,15 +104,28 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }
 
   // --- Syncing Logic ---
-  const handleStateChange = useCallback((isPlaying: boolean, seekTime: number) => {
+  const handleStateChange = useCallback((newState: Partial<PlayerState>) => {
     if (canControl) {
-      onPlayerStateChange({ isPlaying, seekTime });
+      onPlayerStateChange(newState);
     }
   }, [canControl, onPlayerStateChange]);
 
   // Effect for syncing remote state to local player (for viewers)
   useEffect(() => {
-    if (canControl || !playerState || !isPlayerReady.current) return;
+    if (!isPlayerReady.current) return;
+    
+    // Sync volume for all users
+    const newVolume = playerState?.volume ?? 0.8;
+    setVolume(newVolume);
+    if (ytPlayerRef.current) {
+        ytPlayerRef.current.setVolume(newVolume * 100);
+    }
+    if (htmlPlayerRef.current) {
+        htmlPlayerRef.current.volume = newVolume;
+    }
+    
+    if (canControl || !playerState) return;
+
 
     let player: YouTubePlayer | HTMLVideoElement | null = null;
     let getStatus: () => number = () => -1; // -1: unstarted, 0: ended, 1: playing, 2: paused
@@ -209,7 +224,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   
     // Sync state with other clients
-    handleStateChange(shouldBePlaying, getCurrentPlayerTime());
+    handleStateChange({ isPlaying: shouldBePlaying, seekTime: getCurrentPlayerTime() });
   }, [canControl, handleStateChange, urlType]);
 
   const seek = useCallback((amount: number) => {
@@ -220,7 +235,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
     if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
 
-    handleStateChange(getPlayerState() === 1, newTime);
+    handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
   }, [canControl, handleStateChange]);
 
   const handleSliderChange = (value: number[]) => {
@@ -231,7 +246,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
     if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     
-    handleStateChange(getPlayerState() === 1, newTime);
+    handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
+  };
+  
+  const handleVolumeChange = (newVolume: number[]) => {
+    const vol = newVolume[0];
+    setVolume(vol);
+
+    if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
+    if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
+    
+    if(canControl) {
+        handleStateChange({ volume: vol });
+    }
   };
   
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -270,6 +297,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
     setDuration(event.target.getDuration());
+    const initialVolume = playerState?.volume ?? 0.8;
+    event.target.setVolume(initialVolume * 100);
+    setVolume(initialVolume);
+
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         event.target.seekTo(initialSeekTime, true);
@@ -282,9 +313,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const currentTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
     if (event.data === 0) { // Ended
       onVideoEnded();
-      handleStateChange(false, 0);
+      handleStateChange({ isPlaying: false, seekTime: 0 });
     } else if (event.data === 1 || event.data === 2) { // Playing or Paused
-      handleStateChange(event.data === 1, currentTime);
+      handleStateChange({ isPlaying: event.data === 1, seekTime: currentTime });
       setProgress(currentTime);
     }
   };
@@ -294,6 +325,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
     setDuration(htmlPlayerRef.current.duration);
+    const initialVolume = playerState?.volume ?? 0.8;
+    htmlPlayerRef.current.volume = initialVolume;
+    setVolume(initialVolume);
+
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         htmlPlayerRef.current.currentTime = initialSeekTime;
@@ -303,14 +338,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const onHtmlStateChange = () => {
       if (!canControl || isSeekingRef.current || !htmlPlayerRef.current) return;
-      handleStateChange(!htmlPlayerRef.current.paused, htmlPlayerRef.current.currentTime);
+      handleStateChange({ isPlaying: !htmlPlayerRef.current.paused, seekTime: htmlPlayerRef.current.currentTime });
       setProgress(htmlPlayerRef.current.currentTime);
   };
 
   const onHtmlEnded = () => {
     if (!canControl) return;
     onVideoEnded();
-    handleStateChange(false, 0);
+    handleStateChange({ isPlaying: false, seekTime: 0 });
   }
 
   // --- Rendering ---
@@ -403,8 +438,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     </div>
   );
 
+  const VolumeIcon = useMemo(() => {
+    if (volume === 0) return VolumeX;
+    if (volume < 0.5) return Volume1;
+    return Volume2;
+  }, [volume]);
+
+
   const renderCustomControls = () => {
-    if (!canControl || urlType === 'empty' || urlType === 'iframe') return null;
+    if (urlType === 'empty' || urlType === 'iframe') return null;
 
     return (
       <div 
@@ -412,24 +454,49 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             "absolute inset-0 z-20 flex flex-col justify-between p-4 bg-black/30 transition-opacity duration-300",
             showControls ? "opacity-100" : "opacity-0"
         )}
+        onClick={(e) => e.stopPropagation()} // Prevent click from bubbling to the parent
       >
         <div></div>
 
         <div className="flex items-center justify-center">
+           {canControl && (
             <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-20 h-20">
                 {playerState?.isPlaying ? <Pause className="w-12 h-12" /> : <Play className="w-12 h-12" />}
             </Button>
+           )}
         </div>
 
         <div className="flex items-center gap-4 text-white font-mono text-sm">
-           <span>{formatTime(progress)}</span>
-           <Slider
-                value={[progress]}
-                max={duration}
-                step={1}
-                onValueChange={handleSliderChange}
-            />
-           <span>{formatTime(duration)}</span>
+           {canControl ? (
+            <>
+               <span>{formatTime(progress)}</span>
+               <Slider
+                    value={[progress]}
+                    max={duration}
+                    step={1}
+                    onValueChange={handleSliderChange}
+                />
+               <span>{formatTime(duration)}</span>
+            </>
+           ) : <div className="flex-grow"></div> }
+
+            <Popover>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white">
+                        <VolumeIcon className="w-6 h-6" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none">
+                     <Slider
+                        defaultValue={[volume]}
+                        max={1}
+                        step={0.05}
+                        orientation="vertical"
+                        className="h-24 w-2"
+                        onValueChange={handleVolumeChange}
+                    />
+                </PopoverContent>
+            </Popover>
         </div>
       </div>
     );
@@ -458,3 +525,5 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
+    
