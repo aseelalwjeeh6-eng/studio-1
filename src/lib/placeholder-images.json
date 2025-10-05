@@ -37,6 +37,42 @@
       "imageHint": "man portrait"
     },
     {
+      "id": "room-avatar-1",
+      "description": "Room avatar - Cinema projector",
+      "imageUrl": "https://images.unsplash.com/photo-1646687109054-10a47422dbdd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxjaW5lbWElMjBwcm9qZWN0b3J8ZW58MHx8fHwxNzU5Njg5MTQ4fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "cinema projector"
+    },
+    {
+      "id": "room-avatar-2",
+      "description": "Room avatar - Popcorn",
+      "imageUrl": "https://images.unsplash.com/photo-1711394918587-b54111384ab7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxwb3Bjb3JuJTIwY2luZW1hdGljfGVufDB8fHx8MTc1OTY4OTE0OHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "popcorn cinematic"
+    },
+    {
+      "id": "room-avatar-3",
+      "description": "Room avatar - 3D glasses",
+      "imageUrl": "https://images.unsplash.com/photo-1554128655-161219374d63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHwzZCUyMGdsYXNzZXN8ZW58MHx8fHwxNzU5NjY2MDg1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "3d glasses"
+    },
+    {
+      "id": "room-avatar-4",
+      "description": "Room avatar - Film reel",
+      "imageUrl": "https://images.unsplash.com/photo-1478720568477-152d9b164e26?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxmaWxtJTIwcmVlbHxlbnwwfHx8fDE3NTk2ODkxNDh8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "film reel"
+    },
+    {
+      "id": "room-avatar-5",
+      "description": "Room avatar - Clapperboard",
+      "imageUrl": "https://images.unsplash.com/photo-1682130301125-5b63bbf93241?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxtb3ZpZSUyMGNsYXBwZXJib2FyZHxlbnwwfHx8fDE3NTk2ODkxNDl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "movie clapperboard"
+    },
+    {
+      "id": "room-avatar-6",
+      "description": "Room avatar - Ticket stub",
+      "imageUrl": "https://images.unsplash.com/photo-1611550082883-a65b37a8ea89?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxtb3ZpZSUyMHRpY2tldHxlbnwwfHx8fDE3NTk2MzIwNDB8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "movie ticket"
+    },
+    {
       "id": "room-bg-1",
       "description": "Romantic night with city lights",
       "imageUrl": "https://images.unsplash.com/photo-1531218150217-54595bc2b634?w=1920&h=1080&fit=crop",

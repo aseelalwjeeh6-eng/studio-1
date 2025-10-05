@@ -15,7 +15,7 @@ import {
   remove,
 } from 'firebase/database';
 import { v4 as uuidv4 } from 'uuid';
-import { generateRoomAvatar } from '@/ai/flows/generate-room-avatar-flow';
+import { PlaceHolderImages } from './placeholder-images';
 
 // A simple (and not cryptographically secure) hashing function for demonstration.
 // In a real-world app, use a library like bcryptjs.
@@ -311,15 +311,11 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
     // Only create the room if it doesn't already exist.
     if (!snapshot.exists()) {
         const roomName = `غرفة ${hostName}`;
-        let avatarUrl = '';
-        try {
-            const result = await generateRoomAvatar({ roomName });
-            avatarUrl = result.imageUrl;
-        } catch (error) {
-            console.error("Failed to generate room avatar:", error);
-            // Fallback to a placeholder if generation fails
-            avatarUrl = `https://picsum.photos/seed/${roomId}/200/200`;
-        }
+        
+        // Select a random room avatar from placeholders
+        const roomAvatars = PlaceHolderImages.filter(p => p.id.startsWith('room-avatar-'));
+        const randomAvatar = roomAvatars[Math.floor(Math.random() * roomAvatars.length)];
+        const avatarUrl = randomAvatar ? randomAvatar.imageUrl : `https://picsum.photos/seed/${roomId}/200/200`;
 
         const roomData = {
           host: hostName,
