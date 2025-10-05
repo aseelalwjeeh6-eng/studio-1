@@ -1,12 +1,12 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard } from 'lucide-react';
+import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw } from 'lucide-react';
 import useUserSession from '@/hooks/use-user-session';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, goOnline } from 'firebase/database';
@@ -72,8 +72,19 @@ export default function LobbyPage() {
     return () => off(roomsRef, 'value', listener);
   }, []);
 
+  const userHostedRoom = useMemo(() => {
+    if (!user) return null;
+    return activeRooms.find(room => room.host === user.name);
+  }, [activeRooms, user]);
+
   const handleCreateRoom = async () => {
     if (!user || isCreatingRoom) return;
+
+    // If user already has an active room, redirect them there.
+    if (userHostedRoom) {
+        router.push(`/rooms/${userHostedRoom.id}`);
+        return;
+    }
     
     setIsCreatingRoom(true);
     const newRoomId = uuidv4();
@@ -124,21 +135,23 @@ export default function LobbyPage() {
                 <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                        <PlusCircle className="text-accent" />
-                        <span>إنشاء غرفة جديدة</span>
+                        {userHostedRoom ? <RotateCcw className="text-accent" /> : <PlusCircle className="text-accent" />}
+                        <span>{userHostedRoom ? 'العودة إلى غرفتك' : 'إنشاء غرفة جديدة'}</span>
                         </CardTitle>
                         <CardDescription>
-                        ابدأ غرفة مشاهدة جديدة وادعُ أصدقائك.
+                        {userHostedRoom ? 'لديك غرفة نشطة بالفعل. اضغط للعودة إليها.' : 'ابدأ غرفة مشاهدة جديدة وادعُ أصدقائك.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Button onClick={handleCreateRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
                         {isCreatingRoom ? (
                             <Loader2 className="me-2 h-5 w-5 animate-spin" />
+                        ) : userHostedRoom ? (
+                            <LogIn className="me-2 h-5 w-5" />
                         ) : (
                             <Clapperboard className="me-2 h-5 w-5" />
                         )}
-                         إنشاء غرفة
+                         {userHostedRoom ? 'العودة إلى غرفتي' : 'إنشاء غرفة'}
                         </Button>
                     </CardContent>
                 </Card>
