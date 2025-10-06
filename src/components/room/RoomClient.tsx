@@ -677,7 +677,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   const handleSwitchToVideoClick = () => {
-    console.error('الخدمة قيد التطوير سيتم تجهيزها قريبا');
+    console.log('الخدمة قيد التطوير سيتم تجهيزها قريبا');
   };
 
   const parseDuration = (duration: string) => {
@@ -1191,8 +1191,12 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
                      const remainingMembers: Member[] = finalRoomData.members ? Object.values(finalRoomData.members) : [];
 
+                     // If the room becomes empty, do not pause the video.
+                     if (remainingMembers.length === 0) {
+                         // The video keeps playing.
+                     }
                      // If I was the host, transfer host
-                     if (finalRoomData.host === user.name && remainingMembers.length > 0) {
+                     else if (finalRoomData.host === user.name) {
                         const moderators: string[] = finalRoomData.moderators || [];
                         const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
                         

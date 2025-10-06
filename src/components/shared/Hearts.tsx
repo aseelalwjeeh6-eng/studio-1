@@ -1,19 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
 
 const Hearts = () => {
   const [elements, setElements] = useState<{ id: number; style: React.CSSProperties; content: string }[]>([]);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    // This will only run on the client, after the initial render.
     setIsMounted(true);
   }, []);
 
   useEffect(() => {
-    // Don't generate elements until the component is mounted on the client.
     if (!isMounted) return;
 
     const createElements = () => {
@@ -39,6 +36,7 @@ const Hearts = () => {
             position: 'absolute',
             bottom: '-50px',
             userSelect: 'none',
+            zIndex: 0,
           } as React.CSSProperties,
         };
       });
@@ -49,12 +47,10 @@ const Hearts = () => {
 
   }, [isMounted]);
 
-  // Render nothing on the server and during the initial client render.
   if (!isMounted) {
     return null;
   }
 
-  // Render the hearts only on the client side after mounting.
   return (
     <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
       {elements.map((el) => (

@@ -58,7 +58,8 @@ export default function LobbyPage() {
               backgroundUrl: room.backgroundUrl,
               avatarUrl: room.avatarUrl
             };
-          });
+          })
+          .filter(room => room.memberCount > 0);
         setActiveRooms(loadedRooms);
       } else {
         setActiveRooms([]);
