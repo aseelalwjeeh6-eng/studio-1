@@ -59,7 +59,6 @@ export default function LobbyPage() {
               avatarUrl: room.avatarUrl
             };
           })
-          .filter(room => room.memberCount > 0);
         setActiveRooms(loadedRooms);
       } else {
         setActiveRooms([]);
