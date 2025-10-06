@@ -112,10 +112,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   // Effect for syncing remote state to local player (for viewers)
   useEffect(() => {
-    if (!isPlayerReady.current) return;
+    if (!isPlayerReady.current || !playerState) return;
     
     // Sync volume for all users
-    const newVolume = playerState?.volume ?? 0.8;
+    const newVolume = playerState.volume ?? 0.8;
     setVolume(newVolume);
     if (ytPlayerRef.current) {
         ytPlayerRef.current.setVolume(newVolume * 100);
@@ -124,11 +124,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         htmlPlayerRef.current.volume = newVolume;
     }
     
-    if (canControl || !playerState) return;
-
+    // Non-hosts just sync to the host's state
+    if (canControl) return;
 
     let player: YouTubePlayer | HTMLVideoElement | null = null;
-    let getStatus: () => number = () => -1; // -1: unstarted, 0: ended, 1: playing, 2: paused
+    let getStatus: () => number = () => -1; // -1: unstarted, 0: ended, 1: playing, 2: paused, 3: buffering
     let play: () => void = () => {};
     let pause: () => void = () => {};
     let seek: (time: number) => void = () => {};
@@ -155,7 +155,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const playerStatus = getStatus();
 
     // Sync play/pause state
-    if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) { // 3 is buffering for YT
+    if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
         play();
     } else if (!playerState.isPlaying && playerStatus === 1) {
         pause();
@@ -165,6 +165,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const hostTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
     const currentTime = getCurrentTime();
     
+    // Allow a larger discrepancy (e.g., 2 seconds) before forcing a sync to avoid jitter
     if (Math.abs(currentTime - hostTime) > 2) {
       isSeekingRef.current = true;
       seek(hostTime);
@@ -181,7 +182,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (currentTime !== null && !isNaN(currentTime)) {
             setProgress(currentTime);
             // Periodically sync host time to prevent drift
-            onPlayerStateChange({ seekTime: currentTime });
+            handleStateChange({ seekTime: currentTime });
         }
       }, 1000);
     } else {
@@ -193,12 +194,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return () => {
       if (hostSyncIntervalRef.current) clearInterval(hostSyncIntervalRef.current);
     };
-  }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
+  }, [canControl, playerState?.isPlaying, handleStateChange]);
   
   // Update local progress for viewers
   useEffect(() => {
     if (!canControl && playerState) {
-        const newProgress = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const newProgress = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         if (newProgress <= duration) {
             setProgress(newProgress);
         }
@@ -209,44 +210,43 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
   
-    let shouldBePlaying: boolean;
-    const playerStatus = getPlayerState();
-  
-    // Directly control the player
+    const shouldBePlaying = !(playerState?.isPlaying);
+    
     if (urlType === 'youtube' && ytPlayerRef.current) {
-      shouldBePlaying = playerStatus !== 1;
       shouldBePlaying ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
     } else if (urlType === 'direct' && htmlPlayerRef.current) {
-      shouldBePlaying = htmlPlayerRef.current.paused;
       shouldBePlaying ? htmlPlayerRef.current.play().catch(console.error) : htmlPlayerRef.current.pause();
     } else {
         return;
     }
   
-    // Sync state with other clients
+    // Immediately sync state with other clients
     handleStateChange({ isPlaying: shouldBePlaying, seekTime: getCurrentPlayerTime() });
-  }, [canControl, handleStateChange, urlType]);
+  }, [canControl, handleStateChange, urlType, playerState?.isPlaying]);
 
   const seek = useCallback((amount: number) => {
-    if (!canControl) return;
+    if (!canControl || !isPlayerReady.current) return;
     const currentTime = getCurrentPlayerTime();
-    const newTime = Math.max(0, currentTime + amount);
+    const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     
     if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
     if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
 
     handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
-  }, [canControl, handleStateChange]);
+  }, [canControl, handleStateChange, duration]);
 
   const handleSliderChange = (value: number[]) => {
     if (!canControl) return;
     const newTime = value[0];
-    setProgress(newTime);
+    setProgress(newTime); // Update UI immediately for responsiveness
+    isSeekingRef.current = true;
     
     if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
     if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     
-    handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
+    handleStateChange({ seekTime: newTime });
+    
+    setTimeout(() => { isSeekingRef.current = false; }, 500); // Prevent state updates for a short time after seeking
   };
   
   const handleVolumeChange = (newVolume: number[]) => {
@@ -266,22 +266,24 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setShowControls(true);
     controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
     
-    if (!canControl || urlType === 'empty' || urlType === 'iframe') return;
+    if (urlType === 'empty' || urlType === 'iframe') return;
 
     const DOUBLE_CLICK_THRESHOLD = 300;
     const currentTime = Date.now();
     const clickX = e.clientX;
     const { left, width } = e.currentTarget.getBoundingClientRect();
-    const clickSide = clickX < left + width / 2 ? 'left' : 'right';
+    const clickSide = clickX < left + width / 3 ? 'left' : (clickX > left + width * 2 / 3 ? 'right' : 'center');
 
     if (
       currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD &&
       clickSide === lastClickSideRef.current
     ) {
       // Double click detected
-      const seekAmount = clickSide === 'left' ? -5 : 5;
-      seek(seekAmount);
-
+      if (canControl) {
+          if (clickSide === 'left') seek(-5);
+          if (clickSide === 'right') seek(5);
+      }
+      
       // Reset after double click
       lastClickTimeRef.current = 0;
       lastClickSideRef.current = null;
@@ -289,6 +291,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       // Single click
       lastClickTimeRef.current = currentTime;
       lastClickSideRef.current = clickSide;
+      if (clickSide === 'center') {
+        togglePlay();
+      }
     }
   };
   
@@ -296,14 +301,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onYtReady = (event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
-    setDuration(event.target.getDuration());
+    const ytDuration = event.target.getDuration();
+    setDuration(ytDuration);
+    
     const initialVolume = playerState?.volume ?? 0.8;
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
 
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
-        event.target.seekTo(initialSeekTime, true);
+        const seekTo = Math.min(initialSeekTime, ytDuration);
+        event.target.seekTo(seekTo, true);
         if (playerState.isPlaying) event.target.playVideo();
     }
   };
@@ -313,13 +321,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const currentTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
     if (event.data === 0) { // Ended
       onVideoEnded();
-      if (canControl) {
-        handleStateChange({ isPlaying: false, seekTime: 0 });
-      }
     } else if (canControl && (event.data === 1 || event.data === 2)) { // Playing or Paused
-      handleStateChange({ isPlaying: event.data === 1, seekTime: currentTime });
+      if (playerState?.isPlaying !== (event.data === 1)) {
+        handleStateChange({ isPlaying: event.data === 1, seekTime: currentTime });
+      }
       setProgress(currentTime);
-    } else if (event.data === 1 || event.data === 2) {
+    } else if (event.data === 1 || event.data === 2) { // for viewers
       setProgress(currentTime);
     }
   };
@@ -328,14 +335,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onHtmlReady = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
-    setDuration(htmlPlayerRef.current.duration);
+    const htmlDuration = htmlPlayerRef.current.duration;
+    setDuration(htmlDuration);
+
     const initialVolume = playerState?.volume ?? 0.8;
     htmlPlayerRef.current.volume = initialVolume;
     setVolume(initialVolume);
 
     if (playerState) {
         const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
-        htmlPlayerRef.current.currentTime = initialSeekTime;
+        const seekTo = Math.min(initialSeekTime, htmlDuration);
+        htmlPlayerRef.current.currentTime = seekTo;
         if (playerState.isPlaying) htmlPlayerRef.current.play().catch(console.error);
     }
   };
@@ -343,16 +353,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onHtmlStateChange = () => {
       if (isSeekingRef.current || !htmlPlayerRef.current) return;
       if (canControl) {
-        handleStateChange({ isPlaying: !htmlPlayerRef.current.paused, seekTime: htmlPlayerRef.current.currentTime });
+        const isPlaying = !htmlPlayerRef.current.paused;
+        if (playerState?.isPlaying !== isPlaying) {
+          handleStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
+        }
       }
       setProgress(htmlPlayerRef.current.currentTime);
   };
 
   const onHtmlEnded = () => {
     onVideoEnded();
-    if (canControl) {
-      handleStateChange({ isPlaying: false, seekTime: 0 });
-    }
   }
 
   // --- Rendering ---
@@ -383,10 +393,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                       modestbranding: 1,
                       iv_load_policy: 3,
                       disablekb: 1,
+                      start: playerState?.seekTime ? Math.floor(playerState.seekTime) : 0
                     },
                   }}
                   onReady={onYtReady}
                   onStateChange={onYtStateChange}
+                  onEnd={onVideoEnded}
                   className="w-full h-full"
                 />
             );
@@ -485,7 +497,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 />
                <span>{formatTime(duration)}</span>
             </>
-           ) : <div className="flex-grow"></div> }
+           ) : (
+             <>
+               <span>{formatTime(progress)}</span>
+               <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden">
+                 <div className="absolute h-full bg-primary" style={{ width: `${(progress / duration) * 100}%`}}></div>
+               </div>
+               <span>{formatTime(duration)}</span>
+            </>
+           )}
 
             <Popover>
                 <PopoverTrigger asChild>
@@ -520,6 +540,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         onClick={handlePlayerClick}
         onMouseLeave={() => {
             if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+            controlsTimeoutRef.current = null;
             setShowControls(false);
         }}
     >
@@ -532,5 +553,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
-    

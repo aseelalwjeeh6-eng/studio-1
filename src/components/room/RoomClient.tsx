@@ -1,6 +1,3 @@
-
-
-
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -372,12 +369,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   };
 
   const handleToggleMute = () => {
-    if (isSeated) {
-        const participant = [localParticipant, ...participants].find(p => p.identity === user.name);
-        if (participant) {
-            const isEnabled = participant.isMicrophoneEnabled;
-            participant.setMicrophoneEnabled(!isEnabled);
-        }
+    if (isSeated && localParticipant) {
+        localParticipant.setMicrophoneEnabled(!localParticipant.isMicrophoneEnabled);
     }
   };
 
@@ -424,8 +417,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   
   const onSetVideo = useCallback((videoIdentifier: string, startTime = 0) => {
     if (canControl) {
-      set(ref(database, `rooms/${roomId}/videoUrl`), videoIdentifier);
-      set(ref(database, `rooms/${roomId}/playerState`), { 
+      const videoUrlRef = ref(database, `rooms/${roomId}/videoUrl`);
+      const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
+      
+      set(videoUrlRef, videoIdentifier);
+      set(playerStateRef, { 
         isPlaying: !!videoIdentifier, 
         seekTime: startTime, 
         timestamp: serverTimestamp(),
@@ -437,9 +433,15 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const handlePlayerStateChange = useCallback((newState: Partial<PlayerState>) => {
     if (canControl) {
         const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-        runTransaction(playerStateRef, (currentState) => {
-            const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8 };
-            return { ...current, ...newState, timestamp: serverTimestamp() };
+        runTransaction(playerStateRef, (currentState: PlayerState | null) => {
+            const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, timestamp: Date.now() };
+            // Ensure timestamp is only updated when seekTime is also updated, or on play/pause
+            const shouldUpdateTimestamp = newState.seekTime !== undefined || newState.isPlaying !== undefined;
+            return { 
+              ...current, 
+              ...newState, 
+              timestamp: shouldUpdateTimestamp ? serverTimestamp() : current.timestamp 
+            };
         });
     }
   }, [canControl, roomId]);
@@ -526,6 +528,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
           if (urlObj.hostname.includes('youtube.com')) {
             return urlObj.searchParams.get('v');
           }
+           if (urlObj.hostname === 'youtu.be') {
+              return urlObj.pathname.slice(1);
+           }
         } catch (e) {
             return url.match(/^[a-zA-Z0-9_-]{11}$/) ? url : null;
         }
@@ -539,10 +544,13 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     }
     
     if (playlist.length > 0) {
-        const nextIndex = (currentIndex + 1) % playlist.length;
-        // If it was the last video and we are not looping, clear the screen.
-        // For now, let's loop.
-        onSetVideo(playlist[nextIndex].videoId);
+        const nextIndex = (currentIndex + 1);
+        if (nextIndex < playlist.length) {
+            onSetVideo(playlist[nextIndex].videoId);
+        } else {
+            // Last video in playlist ended
+            onSetVideo('');
+        }
     } else {
         onSetVideo('');
     }
@@ -1137,6 +1145,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     // For Realtime DB presence
     const presenceRef = ref(database, `presence/${user.name}`);
     const connectedRef = ref(database, '.info/connected');
+    let roomData: any = null; // To store initial room data
 
     const setupRoom = async () => {
       try {
@@ -1150,7 +1159,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             return;
         }
 
-        const roomData = roomSnapshot.val();
+        roomData = roomSnapshot.val();
         setRoomPassword(roomData.password);
         setPasswordChecked(true); // Now we know if there is a password or not
         
@@ -1164,8 +1173,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
               if (snap.val() === true) {
                 goOnline(database);
                 set(memberRef, memberData);
-                const disconnectMemberRef = onDisconnect(memberRef);
-                disconnectMemberRef.remove();
+                onDisconnect(memberRef).remove();
                 
                 set(presenceRef, { status: 'online', lastChanged: serverTimestamp() });
                 onDisconnect(presenceRef).set({ status: 'offline', lastChanged: serverTimestamp() });
@@ -1176,37 +1184,30 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
               sendSystemMessage(`${user.name} انضم إلى الغرفة`);
             }
 
-            const disconnectRef = onDisconnect(memberRef);
-            disconnectRef.remove().then(() => {
-                // This will run when the client disconnects uncleanly
-                get(ref(database, `rooms/${roomId}/members`)).then(snapshot => {
-                    // If I am the last member, pause the video.
-                    if (snapshot.numChildren() === 0) {
-                        const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-                        update(playerStateRef, { isPlaying: false });
-                    }
+            onDisconnect(memberRef).remove().then(() => {
+                 get(ref(database, `rooms/${roomId}`)).then(finalRoomSnapshot => {
+                     const finalRoomData = finalRoomSnapshot.val();
+                     if (!finalRoomData) return; // Room might have been deleted manually
 
-                    // If I was the host, transfer host
-                     get(hostRef).then(hostSnapshot => {
-                         if (hostSnapshot.val() === user.name) {
-                            const remainingMembers: Member[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
-                             if (remainingMembers.length > 0) {
-                                 const moderators: string[] = roomData.moderators || [];
-                                 const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
-                                 if (potentialModeratorHosts.length > 0) {
-                                     potentialModeratorHosts.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
-                                     set(hostRef, potentialModeratorHosts[0].name);
-                                 } else {
-                                     remainingMembers.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
-                                     set(hostRef, remainingMembers[0].name);
-                                 }
-                             }
-                         }
-                     });
-                });
+                     const remainingMembers: Member[] = finalRoomData.members ? Object.values(finalRoomData.members) : [];
+
+                     // If I was the host, transfer host
+                     if (finalRoomData.host === user.name && remainingMembers.length > 0) {
+                        const moderators: string[] = finalRoomData.moderators || [];
+                        const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
+                        
+                        let newHostName: string;
+                        if (potentialModeratorHosts.length > 0) {
+                            potentialModeratorHosts.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
+                            newHostName = potentialModeratorHosts[0].name;
+                        } else {
+                            remainingMembers.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
+                            newHostName = remainingMembers[0].name;
+                        }
+                        set(ref(database, `rooms/${roomId}/host`), newHostName);
+                     }
+                 });
             });
-
-
         })();
 
         const tokenFetchPromise = (async () => {
@@ -1234,7 +1235,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         if (isMounted) {
             console.error("Error setting up room:", error);
             console.error('فشل في تهيئة الغرفة. قد تكون هناك مشكلة في الاتصال.');
-            // We don't push to lobby, just log the error to avoid kicking the user out for a temporary network issue.
         }
       }
     };
@@ -1262,13 +1262,14 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             
             remove(memberRefOnUnmount);
             
-            onDisconnect(memberRef).cancel();
-            onDisconnect(hostRef).cancel();
-            
-            const userPresenceRef = ref(database, `presence/${user.name}`);
-            set(userPresenceRef, { status: 'offline', lastChanged: serverTimestamp() });
-            onDisconnect(userPresenceRef).cancel();
-            onDisconnect(connectedRef).cancel();
+            // Cancel all onDisconnect operations for this user
+            const allOnDisconnects = [
+                onDisconnect(memberRef),
+                onDisconnect(hostRef),
+                onDisconnect(ref(database, `presence/${user.name}`)),
+                onDisconnect(connectedRef),
+            ];
+            allOnDisconnects.forEach(op => op.cancel());
         }
         goOffline(database);
     };
@@ -1312,8 +1313,3 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 };
 
 export default RoomClient;
-
-    
-
-    
-
