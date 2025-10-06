@@ -67,6 +67,7 @@ const LoginForm = ({ onLoginSuccess }: { onLoginSuccess: (user: AppUser) => void
             onLoginSuccess(loggedInUser);
         } catch (error: any) {
             setError(error.message || "فشل تسجيل الدخول.");
+            console.error(error.message || "فشل تسجيل الدخول.");
             setIsLoading(false);
         }
     };
@@ -124,6 +125,7 @@ const RegisterForm = ({ onRegisterSuccess }: { onRegisterSuccess: (user: AppUser
             onRegisterSuccess(registeredUser);
         } catch (error: any) {
             setError(error.message || "فشل إنشاء الحساب.");
+            console.error(error.message || "فشل إنشاء الحساب.");
             setIsLoading(false);
         }
     };

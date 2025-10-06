@@ -9,7 +9,6 @@ import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw } 
 import useUserSession from '@/hooks/use-user-session';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, goOnline } from 'firebase/database';
-import Hearts from '@/components/shared/Hearts';
 import { createRoom } from '@/lib/firebase-service';
 import { v4 as uuidv4 } from 'uuid';
 import Image from 'next/image';
@@ -118,7 +117,6 @@ export default function LobbyPage() {
 
   return (
     <div className="relative flex flex-col items-center justify-center py-12 min-h-[calc(100vh-80px)]">
-      <Hearts />
       <div className="w-full max-w-4xl space-y-8 z-10">
         <div className="text-center">
           <h1 className="text-4xl sm:text-5xl font-headline font-bold text-foreground drop-shadow-lg">

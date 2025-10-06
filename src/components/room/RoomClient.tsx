@@ -1198,14 +1198,21 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         })();
 
         const tokenFetchPromise = (async () => {
-            const res = await fetch(`/api/livekit?room=${roomId}&username=${user.name}`);
-            if (!res.ok) {
-                const errorText = await res.text();
-                throw new Error(`Failed to fetch token: ${res.statusText} - ${errorText}`);
-            }
-            const data = await res.json();
-            if (isMounted) {
-                setToken(data.token);
+            try {
+                const res = await fetch(`/api/livekit?room=${roomId}&username=${user.name}`);
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`Failed to fetch token: ${res.statusText} - ${errorText}`);
+                }
+                const data = await res.json();
+                if (isMounted) {
+                    setToken(data.token);
+                }
+            } catch (error) {
+                console.error('Error fetching LiveKit token:', error);
+                if (isMounted) {
+                    console.error('فشل في الحصول على رمز الدخول للغرفة. قد يتم عرض الصفحة بشكل غير صحيح.');
+                }
             }
         })();
         
