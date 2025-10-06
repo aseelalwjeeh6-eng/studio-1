@@ -13,16 +13,13 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp;
-let database: Database;
-
 if (!getApps().length) {
     app = initializeApp(firebaseConfig);
 } else {
     app = getApp();
 }
 
-database = getDatabase(app);
-
+const database = getDatabase(app);
 
 const getAnalyticsInstance = async () => {
     if (typeof window !== 'undefined') {
