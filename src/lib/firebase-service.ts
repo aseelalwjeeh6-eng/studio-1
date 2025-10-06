@@ -71,76 +71,33 @@ export const getUserData = async (username: string): Promise<AppUser | null> => 
   return snapshot.exists() ? snapshot.val() : null;
 };
 
-export const registerUser = async (userData: AppUser): Promise<AppUser> => {
-    const { name, password } = userData;
-    if (!name || !password) throw new Error("الاسم وكلمة المرور مطلوبان.");
-
-    const userRef = getUserRef(database, name);
-    const snapshot = await get(userRef);
-    if (snapshot.exists()) {
-        throw new Error("هذا الاسم مستخدم بالفعل.");
-    }
-    
-    const hashedPassword = await simpleHash(password);
-    const newUser: AppUser = {
-        ...userData,
-        password: hashedPassword,
-    };
-
-    await set(userRef, newUser);
-    // Return user data without password for session
-    const { password: _password, ...userToReturn } = newUser;
-    return userToReturn;
-};
-
-export const loginUser = async (name: string, password_raw: string): Promise<AppUser> => {
-    const userRef = getUserRef(database, name);
-    const snapshot = await get(userRef);
-    if (!snapshot.exists()) {
-        throw new Error("الاسم أو كلمة المرور غير صحيحة.");
-    }
-
-    const userData = snapshot.val() as AppUser;
-    if (!userData.password) {
-        throw new Error("حساب المستخدم هذا قديم ولا يحتوي على كلمة مرور. يرجى إنشاء حساب جديد.");
-    }
-
-    const hashedPassword = await simpleHash(password_raw);
-    if (userData.password !== hashedPassword) {
-        throw new Error("الاسم أو كلمة المرور غير صحيحة.");
-    }
-
-    // Return user data without password for session
-    const { password, ...userToReturn } = userData;
-    return userToReturn;
-};
-
-
-export const upsertUser = async (user: { name: string, avatarId?: string, newAvatar?: any }) => {
+export const upsertUser = async (user: { name: string, avatarId?: string, newAvatar?: any }): Promise<AppUser> => {
   const userRef = getUserRef(database, user.name);
   const snapshot = await get(userRef);
 
   if (!snapshot.exists()) {
-    // This path is for old users who login without a password for the first time.
-    // New registrations are handled by `registerUser`.
-    await set(userRef, {
+    const defaultAvatar = PlaceHolderImages.find(p => p.id === 'avatar1') || PlaceHolderImages[0];
+    const newUser: AppUser = {
       name: user.name,
-      avatarId: user.avatarId || 'avatar1',
+      avatarId: user.avatarId || defaultAvatar.id,
       generatedAvatars: user.newAvatar ? [user.newAvatar] : []
-    });
+    };
+    await set(userRef, newUser);
+    return newUser;
   } else {
-    // This is for updating existing users (avatar, etc.)
+    const existingUser = snapshot.val() as AppUser;
     const updates: any = {};
-    if (user.avatarId) {
+    if (user.avatarId && user.avatarId !== existingUser.avatarId) {
       updates.avatarId = user.avatarId;
     }
     if (user.newAvatar) {
-        const existingAvatars = snapshot.val().generatedAvatars || [];
+        const existingAvatars = existingUser.generatedAvatars || [];
         updates.generatedAvatars = [...existingAvatars, user.newAvatar];
     }
     if (Object.keys(updates).length > 0) {
       await update(userRef, updates);
     }
+    return { ...existingUser, ...updates };
   }
 };
 
