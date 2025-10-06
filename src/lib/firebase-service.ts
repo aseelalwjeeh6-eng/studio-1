@@ -1,5 +1,3 @@
-
-
 import { database } from './firebase';
 import type { Database } from 'firebase/database';
 import {
@@ -20,6 +18,9 @@ import { PlaceHolderImages } from './placeholder-images';
 // A simple (and not cryptographically secure) hashing function for demonstration.
 // In a real-world app, use a library like bcryptjs.
 const simpleHash = async (password: string): Promise<string> => {
+  if (typeof window === 'undefined') {
+    return Promise.resolve(password); // Should not happen in client-side flow
+  }
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -71,6 +72,61 @@ export const getUserData = async (username: string): Promise<AppUser | null> => 
   return snapshot.exists() ? snapshot.val() : null;
 };
 
+export const registerUser = async (userData: Omit<AppUser, 'password'> & { password?: string }): Promise<AppUser> => {
+  const { name, password, avatarId } = userData;
+  const userRef = getUserRef(database, name);
+  const snapshot = await get(userRef);
+
+  if (snapshot.exists()) {
+    throw new Error('اسم المستخدم هذا موجود بالفعل.');
+  }
+  if (!password) {
+    throw new Error('كلمة المرور مطلوبة.');
+  }
+
+  const hashedPassword = await simpleHash(password);
+  
+  const newUser: AppUser = {
+    ...userData,
+    name: name,
+    password: hashedPassword,
+    avatarId: avatarId || 'avatar1',
+  };
+
+  await set(userRef, newUser);
+  
+  // Return user data without the password
+  const { password: _, ...userToReturn } = newUser;
+  return userToReturn;
+}
+
+export const loginUser = async (name: string, passwordAttempt: string): Promise<AppUser> => {
+    const user = await getUserData(name);
+
+    if (!user) {
+        throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة.');
+    }
+    
+    if (!user.password) {
+        // Handle legacy users without a password
+        if (passwordAttempt === '') {
+            const { password, ...userToReturn } = user;
+            return userToReturn;
+        } else {
+             throw new Error('حساب قديم، لا يتطلب كلمة مرور.');
+        }
+    }
+
+    const hashedAttempt = await simpleHash(passwordAttempt);
+    if (user.password !== hashedAttempt) {
+        throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة.');
+    }
+
+    const { password, ...userToReturn } = user;
+    return userToReturn;
+};
+
+
 export const upsertUser = async (user: { name: string, avatarId?: string, newAvatar?: any }): Promise<AppUser> => {
   const userRef = getUserRef(database, user.name);
   const snapshot = await get(userRef);
@@ -97,7 +153,9 @@ export const upsertUser = async (user: { name: string, avatarId?: string, newAva
     if (Object.keys(updates).length > 0) {
       await update(userRef, updates);
     }
-    return { ...existingUser, ...updates };
+    // Make sure to return the user object without the password
+    const { password, ...userToReturn } = { ...existingUser, ...updates };
+    return userToReturn;
   }
 };
 
