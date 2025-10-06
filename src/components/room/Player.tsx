@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
 interface PlayerProps {
   videoUrl: string;
-  onSetVideo: (url: string) => void;
+  onSetVideo: (url: string, startTime?: number) => void;
   canControl: boolean;
   onSearchClick: () => void;
   playerState: PlayerState | null;
@@ -309,13 +309,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   };
 
   const onYtStateChange = (event: { data: number }) => {
-    if (!canControl || isSeekingRef.current) return;
+    if (isSeekingRef.current) return;
     const currentTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
     if (event.data === 0) { // Ended
       onVideoEnded();
-      handleStateChange({ isPlaying: false, seekTime: 0 });
-    } else if (event.data === 1 || event.data === 2) { // Playing or Paused
+      if (canControl) {
+        handleStateChange({ isPlaying: false, seekTime: 0 });
+      }
+    } else if (canControl && (event.data === 1 || event.data === 2)) { // Playing or Paused
       handleStateChange({ isPlaying: event.data === 1, seekTime: currentTime });
+      setProgress(currentTime);
+    } else if (event.data === 1 || event.data === 2) {
       setProgress(currentTime);
     }
   };
@@ -337,15 +341,18 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   };
   
   const onHtmlStateChange = () => {
-      if (!canControl || isSeekingRef.current || !htmlPlayerRef.current) return;
-      handleStateChange({ isPlaying: !htmlPlayerRef.current.paused, seekTime: htmlPlayerRef.current.currentTime });
+      if (isSeekingRef.current || !htmlPlayerRef.current) return;
+      if (canControl) {
+        handleStateChange({ isPlaying: !htmlPlayerRef.current.paused, seekTime: htmlPlayerRef.current.currentTime });
+      }
       setProgress(htmlPlayerRef.current.currentTime);
   };
 
   const onHtmlEnded = () => {
-    if (!canControl) return;
     onVideoEnded();
-    handleStateChange({ isPlaying: false, seekTime: 0 });
+    if (canControl) {
+      handleStateChange({ isPlaying: false, seekTime: 0 });
+    }
   }
 
   // --- Rendering ---

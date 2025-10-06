@@ -1,5 +1,6 @@
 
 
+
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -519,21 +520,29 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const handleVideoEnded = () => {
     if (!canControl) return;
 
-    const currentVideoId = videoUrl.includes('v=') ? new URL(videoUrl).searchParams.get('v') : null;
+    const getYoutubeVideoId = (url: string) => {
+        try {
+          const urlObj = new URL(url);
+          if (urlObj.hostname.includes('youtube.com')) {
+            return urlObj.searchParams.get('v');
+          }
+        } catch (e) {
+            return url.match(/^[a-zA-Z0-9_-]{11}$/) ? url : null;
+        }
+        return null;
+    }
+    
+    const currentVideoId = getYoutubeVideoId(videoUrl);
+    let currentIndex = -1;
+    if (currentVideoId) {
+        currentIndex = playlist.findIndex(item => item.videoId === currentVideoId);
+    }
     
     if (playlist.length > 0) {
-        let nextVideoIndex = 0;
-        if (currentVideoId) {
-            const currentIndex = playlist.findIndex(item => item.videoId === currentVideoId);
-            if (currentIndex !== -1 && currentIndex < playlist.length - 1) {
-                nextVideoIndex = currentIndex + 1;
-            } else {
-                 // It was the last video, or not in playlist, so clear the screen.
-                 onSetVideo('');
-                 return;
-            }
-        }
-        onSetVideo(playlist[nextVideoIndex].videoId);
+        const nextIndex = (currentIndex + 1) % playlist.length;
+        // If it was the last video and we are not looping, clear the screen.
+        // For now, let's loop.
+        onSetVideo(playlist[nextIndex].videoId);
     } else {
         onSetVideo('');
     }
@@ -1171,15 +1180,18 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             disconnectRef.remove().then(() => {
                 // This will run when the client disconnects uncleanly
                 get(ref(database, `rooms/${roomId}/members`)).then(snapshot => {
-                    if (!snapshot.exists()) {
-                        // If I was the last one, remove the room
-                         remove(ref(database, `rooms/${roomId}`));
-                    } else {
-                        const remainingMembers: Member[] = Object.values(snapshot.val());
-                        // If I was the host, transfer host
-                         get(hostRef).then(hostSnapshot => {
-                             if (hostSnapshot.val() === user.name) {
-                                 const moderators: string[] = snapshot.val().moderators || [];
+                    // If I am the last member, pause the video.
+                    if (snapshot.numChildren() === 0) {
+                        const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
+                        update(playerStateRef, { isPlaying: false });
+                    }
+
+                    // If I was the host, transfer host
+                     get(hostRef).then(hostSnapshot => {
+                         if (hostSnapshot.val() === user.name) {
+                            const remainingMembers: Member[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
+                             if (remainingMembers.length > 0) {
+                                 const moderators: string[] = roomData.moderators || [];
                                  const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
                                  if (potentialModeratorHosts.length > 0) {
                                      potentialModeratorHosts.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
@@ -1189,8 +1201,8 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
                                      set(hostRef, remainingMembers[0].name);
                                  }
                              }
-                         });
-                    }
+                         }
+                     });
                 });
             });
 
@@ -1304,3 +1316,4 @@ export default RoomClient;
     
 
     
+
