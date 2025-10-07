@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ interface PlaylistProps {
 }
 
 const Playlist = ({ items, canControl, onPlay, onRemove, currentVideoUrl }: PlaylistProps) => {
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   const getYoutubeVideoId = (url: string) => {
     try {
@@ -41,43 +43,54 @@ const Playlist = ({ items, canControl, onPlay, onRemove, currentVideoUrl }: Play
 
   const currentVideoId = getYoutubeVideoId(currentVideoUrl);
 
+  const handleItemClick = (item: PlaylistItem) => {
+    if (canControl) {
+      setSelectedItemId(selectedItemId === item.id ? null : item.id);
+    }
+  };
+
   return (
     <ScrollArea className="h-96">
         {items.length > 0 ? (
         <div className="space-y-2 p-1">
             {items.map((item) => {
             const isPlaying = item.videoId === currentVideoId;
+            const isSelected = item.id === selectedItemId;
+
             return (
-                <div
-                key={item.id}
+              <div key={item.id}
                 className={cn(
-                    "flex items-center gap-3 p-2 rounded-lg transition-colors",
-                    isPlaying ? "bg-accent/30" : "bg-secondary/50"
+                  "p-2 rounded-lg transition-colors cursor-pointer",
+                  isSelected ? "bg-primary/20" : (isPlaying ? "bg-accent/30" : "bg-secondary/50")
                 )}
-                >
-                <Image
-                    src={item.thumbnail}
-                    alt={item.title}
-                    width={80}
-                    height={45}
-                    className="rounded-md aspect-video object-cover"
-                />
-                <div className="flex-grow overflow-hidden">
-                    <p className="text-sm font-semibold truncate text-foreground">{item.title}</p>
+                onClick={() => handleItemClick(item)}
+              >
+                <div className="flex items-center gap-3">
+                  <Image
+                      src={item.thumbnail}
+                      alt={item.title}
+                      width={80}
+                      height={45}
+                      className="rounded-md aspect-video object-cover"
+                  />
+                  <div className="flex-grow overflow-hidden">
+                      <p className="text-sm font-semibold truncate text-foreground">{item.title}</p>
+                  </div>
                 </div>
-                {canControl && (
-                    <div className="flex items-center gap-1">
-                    {!isPlaying && (
-                        <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => onPlay(item.videoId)}>
-                            <Play className="w-4 h-4" />
-                        </Button>
-                    )}
-                    <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => onRemove(item.id)}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
+
+                {isSelected && canControl && (
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" className="w-full" onClick={() => onPlay(item.videoId)}>
+                      <Play className="me-2" />
+                      تشغيل
                     </Button>
-                    </div>
+                    <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(item.id)}>
+                      <Trash2 className="me-2" />
+                      حذف
+                    </Button>
+                  </div>
                 )}
-                </div>
+              </div>
             );
             })}
         </div>
