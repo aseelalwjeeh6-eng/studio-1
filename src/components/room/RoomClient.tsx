@@ -28,6 +28,7 @@ import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
+import { ScrollArea } from '../ui/scroll-area';
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
 
@@ -729,7 +730,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="flex flex-col min-h-screen w-full bg-background items-center">
+    <div className="flex flex-col h-screen max-h-screen w-full bg-background items-center overflow-hidden">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -741,7 +742,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-        <div className="relative z-10 w-full flex flex-col flex-grow items-center">
+        <div className="relative z-10 w-full flex flex-col flex-grow items-center min-h-0">
             <RoomHeader 
                 onSearchClick={() => setIsSearchOpen(true)} 
                 onPlaylistClick={() => setIsPlaylistOpen(true)}
@@ -756,55 +757,64 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 hostName={hostName}
                 canControl={canControl}
             />
-            <main className="w-full max-w-7xl mx-auto flex-grow flex flex-col gap-4 px-4 pb-4 min-h-0">
-                {videoMode ? (
-                   <div className="flex-grow rounded-lg overflow-hidden h-full">
-                     <VideoConference />
-                   </div>
-                ) : (
-                    <div className="w-full flex-grow flex flex-col gap-4 min-h-0">
-                        <div className="flex-shrink-0">
-                            <Player 
-                                videoUrl={videoUrl} 
-                                onSetVideo={onSetVideo} 
-                                canControl={canControl} 
-                                onSearchClick={() => setIsSearchOpen(true)}
-                                playerState={playerState}
-                                onPlayerStateChange={handlePlayerStateChange}
-                                onVideoEnded={handleVideoEnded}
-                            />
-                        </div>
-                        <div className="flex-shrink-0">
-                             <Seats 
-                                seatedMembers={seatedMembers}
-                                hostName={hostName}
-                                moderators={moderators}
-                                onTakeSeat={handleTakeSeat}
-                                onLeaveSeat={handleLeaveSeat}
-                                currentUser={user}
-                                isHost={isHost}
-                                onKickUser={handleKickUser}
-                                onPromote={handlePromote}
-                                onDemote={handleDemote}
-                                onTransferHost={handleTransferHost}
-                                room={room}
-                                currentUserFriends={friendData.friends}
-                                currentUserRequests={friendData.requests}
-                            />
-                        </div>
-                         <div className="flex-shrink-0">
-                            <ViewerInfo members={viewers} />
-                         </div>
-                         <div className="flex-grow min-h-0 bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
-                           <ChatHeader isHost={isHost} roomId={roomId} />
-                           <div className="flex-grow min-h-0">
-                             <ChatMessages roomId={roomId} user={user} />
-                           </div>
-                         </div>
-                    </div>
-                )}
-            </main>
-            <div className="relative z-20 w-full mt-auto sticky bottom-0">
+
+            {/* Main Content Area */}
+            <div className="w-full flex-grow flex flex-col min-h-0">
+              <ScrollArea className="flex-grow">
+                <main className="w-full max-w-7xl mx-auto flex flex-col gap-4 px-4 pb-4">
+                    {videoMode ? (
+                       <div className="flex-grow rounded-lg overflow-hidden h-full">
+                         <VideoConference />
+                       </div>
+                    ) : (
+                        <>
+                            <div className="flex-shrink-0">
+                                <Player 
+                                    videoUrl={videoUrl} 
+                                    onSetVideo={onSetVideo} 
+                                    canControl={canControl} 
+                                    onSearchClick={() => setIsSearchOpen(true)}
+                                    playerState={playerState}
+                                    onPlayerStateChange={handlePlayerStateChange}
+                                    onVideoEnded={handleVideoEnded}
+                                />
+                            </div>
+                            <div className="flex-shrink-0">
+                                 <Seats 
+                                    seatedMembers={seatedMembers}
+                                    hostName={hostName}
+                                    moderators={moderators}
+                                    onTakeSeat={handleTakeSeat}
+                                    onLeaveSeat={handleLeaveSeat}
+                                    currentUser={user}
+                                    isHost={isHost}
+                                    onKickUser={handleKickUser}
+                                    onPromote={handlePromote}
+                                    onDemote={handleDemote}
+                                    onTransferHost={handleTransferHost}
+                                    room={room}
+                                    currentUserFriends={friendData.friends}
+                                    currentUserRequests={friendData.requests}
+                                />
+                            </div>
+                             <div className="flex-shrink-0">
+                                <ViewerInfo members={viewers} />
+                             </div>
+                             <div className="bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
+                               <ChatHeader isHost={isHost} roomId={roomId} />
+                               <div className="h-96">
+                                 <ChatMessages roomId={roomId} user={user} />
+                               </div>
+                             </div>
+                        </>
+                    )}
+                </main>
+              </ScrollArea>
+            </div>
+
+
+            {/* Chat Input Area */}
+            <div className="relative z-20 w-full mt-auto flex-shrink-0">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
