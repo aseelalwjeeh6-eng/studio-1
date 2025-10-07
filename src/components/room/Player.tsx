@@ -80,7 +80,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const htmlPlayerRef = useRef<HTMLVideoElement | null>(null);
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -89,11 +88,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
   
   const lastClickTimeRef = useRef(0);
-  const lastClickSideRef = useRef<'left' | 'right' | null>(null);
+  const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
 
   // --- Generic Player Control ---
-  const getCurrentPlayerTime = () => {
+  const getCurrentPlayerTime = useCallback(() => {
     try {
         if (ytPlayerRef.current) return ytPlayerRef.current.getCurrentTime();
         if (htmlPlayerRef.current) return htmlPlayerRef.current.currentTime;
@@ -101,9 +100,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         console.warn("Couldn't get player time", e);
     }
     return 0;
-  }
+  }, []);
 
-  const getPlayerState = () => {
+  const getPlayerState = useCallback(() => {
      try {
         if (ytPlayerRef.current) return ytPlayerRef.current.getPlayerState();
         if (htmlPlayerRef.current) return htmlPlayerRef.current.paused ? 2 : 1;
@@ -111,7 +110,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         console.warn("Couldn't get player state", e);
      }
      return -1; // unstarted
-  }
+  }, []);
 
   // --- Syncing Logic ---
   const handleStateChange = useCallback((newState: Partial<PlayerState>) => {
@@ -180,7 +179,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         const hostTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         const currentTime = getCurrentTime();
         
-        // Allow a larger discrepancy (e.g., 2 seconds) before forcing a sync to avoid jitter
         if (Math.abs(currentTime - hostTime) > 2 && !isSeekingRef.current) {
           isSeekingRef.current = true;
           seek(hostTime);
@@ -191,35 +189,32 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState, canControl, urlType]);
 
-  // Effect to update local progress bar UI
+  // Effect to update local progress bar UI from the player itself
   useEffect(() => {
+    let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
-        if (playerState?.isPlaying) {
-            const currentTime = getCurrentPlayerTime();
-            if (currentTime !== null && !isNaN(currentTime) && currentTime <= duration) {
-                setProgress(currentTime);
-            }
+        if (!isPlayerReady.current || !playerState) return;
+
+        const time = getCurrentPlayerTime();
+        if (time !== null && !isNaN(time) && time <= duration) {
+            setProgress(time);
         }
     };
     
-    if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
+    if (playerState?.isPlaying) {
+      progressInterval = setInterval(updateProgress, 500);
     }
     
-    if (playerState?.isPlaying) {
-        progressIntervalRef.current = setInterval(updateProgress, 500);
-    }
-
     return () => {
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      if (progressInterval) clearInterval(progressInterval);
     };
-  }, [playerState?.isPlaying, duration]);
+  }, [playerState?.isPlaying, duration, getCurrentPlayerTime, playerState]);
   
-  // Effect to set initial progress from playerState
+  // Effect to set initial progress from playerState when it changes
   useEffect(() => {
-    if (playerState) {
+    if (playerState && duration > 0) {
         const initialProgress = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
-        if (initialProgress <= duration) {
+        if (initialProgress <= duration && initialProgress >= 0) {
              setProgress(initialProgress);
         }
     }
@@ -229,26 +224,23 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
   
-    const shouldBePlaying = !(playerState?.isPlaying);
-    
     try {
       if (urlType === 'youtube' && ytPlayerRef.current) {
-        shouldBePlaying ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
+        const state = ytPlayerRef.current.getPlayerState();
+        if (state === 1) ytPlayerRef.current.pauseVideo();
+        else ytPlayerRef.current.playVideo();
       } else if (urlType === 'direct' && htmlPlayerRef.current) {
-        shouldBePlaying ? htmlPlayerRef.current.play().catch(console.error) : htmlPlayerRef.current.pause();
-      } else {
-          return;
+        if (htmlPlayerRef.current.paused) htmlPlayerRef.current.play().catch(console.error);
+        else htmlPlayerRef.current.pause();
       }
+      // handleStateChange is called from onYtStateChange or onHtmlStateChange
     } catch (e) {
       console.warn("Could not toggle play", e);
-      return;
     }
-  
-    // handleStateChange is now called from onYtStateChange or onHtmlStateChange
-  }, [canControl, urlType, playerState?.isPlaying]);
+  }, [canControl, urlType]);
 
   const seek = useCallback((amount: number) => {
-    if (!canControl || !isPlayerReady.current) return;
+    if (!canControl || !isPlayerReady.current || !duration) return;
     const currentTime = getCurrentPlayerTime();
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     
@@ -262,10 +254,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         return;
     }
     setProgress(newTime);
-    handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
+    handleStateChange({ seekTime: newTime });
     
     setTimeout(() => { isSeekingRef.current = false; }, 500);
-  }, [canControl, handleStateChange, duration]);
+  }, [canControl, handleStateChange, duration, getCurrentPlayerTime]);
 
   const handleSliderChange = (value: number[]) => {
     if (!canControl || !isPlayerReady.current) return;
@@ -274,7 +266,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     isSeekingRef.current = true;
     
     try {
-        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
+        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, false); // `false` for preview seek
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     } catch (e) {
         console.warn("Could not seek on slider change", e);
@@ -284,7 +276,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const handleSliderCommit = (value: number[]) => {
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
-      handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
+      try {
+        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
+      } catch(e) {
+        console.warn("Could not commit YouTube seek");
+      }
+      handleStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
   };
   
@@ -319,19 +316,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     if (
       currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD &&
-      clickSide === lastClickSideRef.current
+      clickSide === lastClickSideRef.current &&
+      clickSide !== 'center'
     ) {
-      // Double click detected
+      // Double click detected on sides
       if (canControl) {
           if (clickSide === 'left') seek(-5);
           if (clickSide === 'right') seek(5);
       }
-      
       // Reset after double click
       lastClickTimeRef.current = 0;
       lastClickSideRef.current = null;
     } else {
-      // Single click
+      // Single click or first click of a double click
       lastClickTimeRef.current = currentTime;
       lastClickSideRef.current = clickSide;
       if (clickSide === 'center') {
@@ -351,13 +348,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
 
-    if (playerState) {
+    if (playerState && playerState.seekTime < ytDuration) {
         const initialSeekTime = canControl || !playerState.isPlaying
             ? playerState.seekTime
             : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         
-        const seekTo = Math.min(initialSeekTime, ytDuration);
-        event.target.seekTo(seekTo, true);
+        event.target.seekTo(Math.min(initialSeekTime, ytDuration), true);
         if (playerState.isPlaying) event.target.playVideo();
         else event.target.pauseVideo();
     }
@@ -392,13 +388,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     htmlPlayerRef.current.volume = initialVolume;
     setVolume(initialVolume);
 
-    if (playerState) {
+    if (playerState && playerState.seekTime < htmlDuration) {
         const initialSeekTime = canControl || !playerState.isPlaying
             ? playerState.seekTime
             : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         
-        const seekTo = Math.min(initialSeekTime, htmlDuration);
-        htmlPlayerRef.current.currentTime = seekTo;
+        htmlPlayerRef.current.currentTime = Math.min(initialSeekTime, htmlDuration);
         if (playerState.isPlaying) htmlPlayerRef.current.play().catch(console.error);
         else htmlPlayerRef.current.pause();
     }
@@ -608,4 +603,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
