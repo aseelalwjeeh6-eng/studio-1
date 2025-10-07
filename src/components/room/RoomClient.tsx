@@ -715,7 +715,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-background items-center">
+    <div className="flex flex-col min-h-screen w-full bg-background items-center">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -727,7 +727,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-        <div className="relative z-10 w-full flex flex-col h-screen max-h-screen items-center">
+        <div className="relative z-10 w-full flex flex-col flex-grow items-center">
             <RoomHeader 
                 onSearchClick={() => setIsSearchOpen(true)} 
                 onPlaylistClick={() => setIsPlaylistOpen(true)}
@@ -790,7 +790,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     </div>
                 )}
             </main>
-            <div className="relative z-20 w-full mt-auto">
+            <div className="relative z-20 w-full mt-auto sticky bottom-0">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
