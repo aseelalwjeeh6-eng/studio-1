@@ -161,26 +161,34 @@ export const upsertUser = async (user: { name: string, avatarId?: string, newAva
 
 export const searchUsers = async (nameQuery: string, currentUsername: string): Promise<AppUser[]> => {
     const usersRef = getUsersRef(database);
-    const usersQuery = query(usersRef, orderByChild('name'), equalTo(nameQuery));
-    const snapshot = await get(usersQuery);
+    const snapshot = await get(usersRef);
     
     const users: AppUser[] = [];
     if (!snapshot.exists()) {
         return [];
     }
 
-    const currentUserData = await getUserData(currentUsername);
+    const allUsers = snapshot.val();
+    const currentUserData = allUsers[currentUsername];
     if (!currentUserData) return [];
 
     const friendNames = new Set(Object.keys(currentUserData.friends || {}));
-    const receivedRequests = new Set(Object.values(currentUserData.friendRequests || {}).map(req => req.senderName));
+    const sentRequestNames = new Set(); // You might want to track sent requests if needed
+    const receivedRequests = new Set(Object.values(currentUserData.friendRequests || {}).map((req: any) => req.senderName));
     
-    snapshot.forEach((childSnapshot) => {
-        const userData = childSnapshot.val() as AppUser;
-        if (userData.name !== currentUsername && !friendNames.has(userData.name) && !receivedRequests.has(userData.name)) {
-            users.push(userData);
+    for (const username in allUsers) {
+        const userData = allUsers[username] as AppUser;
+        if (
+            userData.name &&
+            userData.name.toLowerCase().startsWith(nameQuery.toLowerCase()) &&
+            userData.name !== currentUsername &&
+            !friendNames.has(userData.name) &&
+            !receivedRequests.has(userData.name)
+        ) {
+            const { password, ...userToReturn } = userData;
+            users.push(userToReturn);
         }
-    });
+    }
 
     return users;
 };
