@@ -308,40 +308,32 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     };
 
     const DOUBLE_CLICK_THRESHOLD = 300;
-    const currentTime = Date.now();
+    const now = Date.now();
     const clickX = e.clientX;
     const { left, width } = e.currentTarget.getBoundingClientRect();
     const clickSide = clickX < left + width / 3 ? 'left' : (clickX > left + width * 2 / 3 ? 'right' : 'center');
 
-    if (
-      currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD &&
-      clickSide === lastClickSideRef.current
-    ) {
-      // Double click detected
+    if (now - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD && clickSide === lastClickSideRef.current) {
+      // Double click
       if (canControl) {
-          if (clickSide === 'left') seek(-5);
-          if (clickSide === 'right') seek(5);
+        if (clickSide === 'left') {
+          seek(-5);
+        } else if (clickSide === 'right') {
+          seek(5);
+        }
       }
-      // Reset after double click to prevent triple-click issues
+      // Reset after action
       lastClickTimeRef.current = 0;
       lastClickSideRef.current = null;
     } else {
-      // Single click or first click of a double click
-      lastClickTimeRef.current = currentTime;
+      // Single click
+      lastClickTimeRef.current = now;
       lastClickSideRef.current = clickSide;
+
       if (clickSide === 'center') {
-        // Toggle play/pause on single click in the center
         togglePlay();
-      } else {
-        // For side clicks, just toggle controls
-        setShowControls(prev => !prev);
       }
     }
-
-    // Always manage controls visibility on any click
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    setShowControls(true);
-    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
   };
   
   // --- YouTube Player Event Handlers ---
@@ -369,13 +361,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onYtStateChange = (event: { data: number }) => {
     if (!canControl || isSeekingRef.current) return;
     
+    // A seek action might momentarily trigger a PAUSED state. We rely on isSeekingRef to prevent this.
+    const currentTime = ytPlayerRef.current?.getCurrentTime();
+    if (currentTime === undefined) return;
+
     if (event.data === 1) { // Playing
       if (!playerState?.isPlaying) {
-        handleStateChange({ isPlaying: true, seekTime: ytPlayerRef.current?.getCurrentTime() });
+        handleStateChange({ isPlaying: true, seekTime: currentTime });
       }
     } else if (event.data === 2) { // Paused
        if (playerState?.isPlaying) {
-        handleStateChange({ isPlaying: false, seekTime: ytPlayerRef.current?.getCurrentTime() });
+        handleStateChange({ isPlaying: false, seekTime: currentTime });
       }
     }
   };
