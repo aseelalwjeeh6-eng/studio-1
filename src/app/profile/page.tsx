@@ -6,7 +6,7 @@ import { useEffect, useState, useTransition, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
-import { User as UserIcon, Loader2, CheckCircle, Image as ImageIcon, Sparkles, Wand2, User, Wallpaper } from 'lucide-react';
+import { User as UserIcon, Loader2, CheckCircle, Image as ImageIcon, Sparkles, Wand2, User, Wallpaper, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { upsertUser, getUserData } from '@/lib/firebase-service';
@@ -68,6 +68,12 @@ export default function ProfilePage() {
     localStorage.setItem('app-background-image', imageToSet.imageUrl);
     console.log('تم تعيين الخلفية الجديدة!');
     setSelectedImage(null);
+  };
+
+  const handleRemoveBackground = () => {
+    document.body.style.setProperty('--app-background-image', 'none');
+    localStorage.removeItem('app-background-image');
+    console.log('تمت إزالة الخلفية والعودة للون الافتراضي!');
   };
 
 
@@ -250,10 +256,16 @@ export default function ProfilePage() {
                 <Separator />
                 
                 <div>
-                   <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                     <Wallpaper className="text-accent"/>
-                     خلفيات التطبيق
-                   </h3>
+                   <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                            <Wallpaper className="text-accent"/>
+                            خلفيات التطبيق
+                        </h3>
+                        <Button variant="destructive" size="sm" onClick={handleRemoveBackground}>
+                            <Trash2 className="me-2" />
+                            إزالة الخلفية
+                        </Button>
+                   </div>
                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                      {selectableBackgrounds.map((img) => {
                        const isSelectedForAction = selectedImage?.id === img.id;
