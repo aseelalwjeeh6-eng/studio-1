@@ -434,20 +434,31 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }, [canControl, roomId, playerState?.volume]);
   
   const handlePlayerStateChange = useCallback((newState: Partial<PlayerState>) => {
-    if (canControl) {
-        const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-        runTransaction(playerStateRef, (currentState: PlayerState | null) => {
-            const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, timestamp: Date.now() };
-            // Ensure timestamp is only updated when seekTime is also updated, or on play/pause
-            const shouldUpdateTimestamp = newState.seekTime !== undefined || newState.isPlaying !== undefined;
-            return { 
-              ...current, 
-              ...newState, 
-              timestamp: shouldUpdateTimestamp ? serverTimestamp() : current.timestamp 
-            };
-        });
-    }
-  }, [canControl, roomId]);
+    if (!canControl) return;
+    const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
+    
+    // Use a transaction to prevent race conditions from multiple state change events
+    runTransaction(playerStateRef, (currentState: PlayerState | null) => {
+        const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, timestamp: Date.now() };
+
+        // Determine if we need to update the timestamp. Only update on major changes like
+        // play/pause or a definitive seek, not on every small update.
+        const shouldUpdateTimestamp = (newState.isPlaying !== undefined && newState.isPlaying !== current.isPlaying) || newState.seekTime !== undefined;
+
+        const updatedState = { 
+            ...current, 
+            ...newState, 
+        };
+
+        if (shouldUpdateTimestamp) {
+            // Using serverTimestamp() ensures all clients get a consistent time.
+            return { ...updatedState, timestamp: serverTimestamp() };
+        } else {
+            // If just volume is changing, no need to update timestamp
+            return updatedState;
+        }
+    });
+}, [canControl, roomId]);
 
 
   const handleSetVideoFromPreview = () => {
@@ -455,7 +466,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       const currentTime = previewPlayerRef.current.getCurrentTime();
       onSetVideo(previewVideo.id.videoId, currentTime);
       setPreviewVideo(null); // Close preview dialog
-      setIsSearchOpen(false); // Close search dialog
     }
   };
 
@@ -759,57 +769,55 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <div className="w-full flex-grow flex flex-col min-h-0">
-              <ScrollArea className="flex-grow">
-                <main className="w-full max-w-7xl mx-auto flex flex-col gap-4 px-4 pb-4">
-                    {videoMode ? (
-                       <div className="flex-grow rounded-lg overflow-hidden h-full">
-                         <VideoConference />
-                       </div>
-                    ) : (
-                        <>
-                            <div className="flex-shrink-0">
-                                <Player 
-                                    videoUrl={videoUrl} 
-                                    onSetVideo={onSetVideo} 
-                                    canControl={canControl} 
-                                    onSearchClick={() => setIsSearchOpen(true)}
-                                    playerState={playerState}
-                                    onPlayerStateChange={handlePlayerStateChange}
-                                    onVideoEnded={handleVideoEnded}
-                                />
-                            </div>
-                            <div className="flex-shrink-0">
-                                 <Seats 
-                                    seatedMembers={seatedMembers}
-                                    hostName={hostName}
-                                    moderators={moderators}
-                                    onTakeSeat={handleTakeSeat}
-                                    onLeaveSeat={handleLeaveSeat}
-                                    currentUser={user}
-                                    isHost={isHost}
-                                    onKickUser={handleKickUser}
-                                    onPromote={handlePromote}
-                                    onDemote={handleDemote}
-                                    onTransferHost={handleTransferHost}
-                                    room={room}
-                                    currentUserFriends={friendData.friends}
-                                    currentUserRequests={friendData.requests}
-                                />
-                            </div>
-                             <div className="flex-shrink-0">
-                                <ViewerInfo members={viewers} />
+            <div className="w-full flex-grow overflow-y-auto">
+              <div className="w-full max-w-7xl mx-auto flex flex-col gap-4 px-4 pb-4">
+                  {videoMode ? (
+                     <div className="flex-grow rounded-lg overflow-hidden h-full">
+                       <VideoConference />
+                     </div>
+                  ) : (
+                      <>
+                          <div className="flex-shrink-0">
+                              <Player 
+                                  videoUrl={videoUrl} 
+                                  onSetVideo={onSetVideo} 
+                                  canControl={canControl} 
+                                  onSearchClick={() => setIsSearchOpen(true)}
+                                  playerState={playerState}
+                                  onPlayerStateChange={handlePlayerStateChange}
+                                  onVideoEnded={handleVideoEnded}
+                              />
+                          </div>
+                          <div className="flex-shrink-0">
+                               <Seats 
+                                  seatedMembers={seatedMembers}
+                                  hostName={hostName}
+                                  moderators={moderators}
+                                  onTakeSeat={handleTakeSeat}
+                                  onLeaveSeat={handleLeaveSeat}
+                                  currentUser={user}
+                                  isHost={isHost}
+                                  onKickUser={handleKickUser}
+                                  onPromote={handlePromote}
+                                  onDemote={handleDemote}
+                                  onTransferHost={handleTransferHost}
+                                  room={room}
+                                  currentUserFriends={friendData.friends}
+                                  currentUserRequests={friendData.requests}
+                              />
+                          </div>
+                           <div className="flex-shrink-0">
+                              <ViewerInfo members={viewers} />
+                           </div>
+                           <div className="bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
+                             <ChatHeader isHost={isHost} roomId={roomId} />
+                             <div className="h-96">
+                               <ChatMessages roomId={roomId} user={user} />
                              </div>
-                             <div className="bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
-                               <ChatHeader isHost={isHost} roomId={roomId} />
-                               <div className="h-96">
-                                 <ChatMessages roomId={roomId} user={user} />
-                               </div>
-                             </div>
-                        </>
-                    )}
-                </main>
-              </ScrollArea>
+                           </div>
+                      </>
+                  )}
+              </div>
             </div>
 
 
@@ -954,7 +962,12 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     </Dialog>
 
 
-    <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+    <Dialog open={isSearchOpen} onOpenChange={(isOpen) => {
+        setIsSearchOpen(isOpen);
+        if (!isOpen) {
+            setPreviewVideo(null); // Close preview if search is closed
+        }
+    }}>
         <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0">
             <DialogHeader className="p-6 pb-4 border-b">
                 <DialogTitle>البحث عن فيديو وإضافته</DialogTitle>
