@@ -22,6 +22,7 @@ interface RoomData {
   memberCount: number;
   backgroundUrl?: string;
   avatarUrl?: string;
+  isPrivate?: boolean;
 }
 
 export default function LobbyPage() {
@@ -56,9 +57,11 @@ export default function LobbyPage() {
               host: room.host,
               memberCount: memberCount,
               backgroundUrl: room.backgroundUrl,
-              avatarUrl: room.avatarUrl
+              avatarUrl: room.avatarUrl,
+              isPrivate: room.isPrivate || false,
             };
           })
+          .filter(room => !room.isPrivate); // Filter out private rooms
         setActiveRooms(loadedRooms);
       } else {
         setActiveRooms([]);
@@ -71,8 +74,28 @@ export default function LobbyPage() {
 
   const userHostedRoom = useMemo(() => {
     if (!user) return null;
-    return activeRooms.find(room => room.host === user.name);
-  }, [activeRooms, user]);
+    // We check the original full list from a direct ref, not the filtered public one
+    const roomsRef = ref(database, 'rooms');
+    let hostedRoom: RoomData | null = null;
+    onValue(roomsRef, (snapshot) => {
+        const roomsData = snapshot.val();
+        if (roomsData) {
+            const found = Object.keys(roomsData)
+                .map(key => ({ id: key, ...roomsData[key] }))
+                .find(room => room.host === user.name);
+            if (found) {
+                hostedRoom = {
+                    id: found.id,
+                    host: found.host,
+                    name: found.name,
+                    memberCount: found.members ? Object.keys(found.members).length : 0,
+                };
+            }
+        }
+    }, { onlyOnce: true });
+    return hostedRoom;
+  }, [user]);
+
 
   const handleCreateRoom = async () => {
     if (!user || isCreatingRoom) return;

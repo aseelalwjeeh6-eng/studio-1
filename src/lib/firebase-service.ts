@@ -351,6 +351,7 @@ export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise
           members: {},
           moderators: [],
           playlist: {},
+          isPrivate: false,
         };
         await set(roomRef, roomData);
     }

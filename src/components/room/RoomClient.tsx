@@ -10,7 +10,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock } from 'lucide-react';
+import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock, EyeOff } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
+import { Switch } from '../ui/switch';
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
 
@@ -161,6 +162,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [roomName, setRoomName] = useState('');
   const [moderators, setModerators] = useState<string[]>([]);
   const [roomBackground, setRoomBackground] = useState<string | null>(null);
+  const [isPrivate, setIsPrivate] = useState(false);
   
   const [videoMode, setVideoMode] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -191,6 +193,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   // Room settings state
   const [tempRoomName, setTempRoomName] = useState('');
   const [tempPin, setTempPin] = useState('');
+  const [tempIsPrivate, setTempIsPrivate] = useState(false);
 
   
   const { room } = useLiveKitRoom();
@@ -293,6 +296,13 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             const name = snapshot.val() || '';
             setRoomName(name);
             setTempRoomName(name);
+        }));
+
+        const isPrivateRef = ref(database, `rooms/${roomId}/isPrivate`);
+        listeners.push(onValue(isPrivateRef, (snapshot) => {
+            const privateState = snapshot.val() || false;
+            setIsPrivate(privateState);
+            setTempIsPrivate(privateState);
         }));
         
         const backgroundUrlRef = ref(database, `rooms/${roomId}/backgroundUrl`);
@@ -614,6 +624,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       const roomData = roomSnapshot.val();
       setTempRoomName(roomData.name || `غرفة ${hostName}`);
       setTempPin(roomData.password || '');
+      setTempIsPrivate(roomData.isPrivate || false);
     }
     setIsSettingsOpen(true);
   };
@@ -630,6 +641,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     }
     if (tempPin !== (currentRoomData.password || '')) {
       updates[`/rooms/${roomId}/password`] = tempPin;
+    }
+    if (tempIsPrivate !== (currentRoomData.isPrivate || false)) {
+        updates[`/rooms/${roomId}/isPrivate`] = tempIsPrivate;
     }
     
     if (Object.keys(updates).length > 0) {
@@ -893,9 +907,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>إعدادات الغرفة</DialogTitle>
-            <DialogDescription>تعديل اسم الغرفة وتعيين كلمة مرور.</DialogDescription>
+            <DialogDescription>تعديل اسم الغرفة، الخصوصية، وتعيين كلمة مرور.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-6 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="room-name" className="text-right">اسم الغرفة</Label>
                 <Input
@@ -903,6 +917,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     value={tempRoomName}
                     onChange={(e) => setTempRoomName(e.target.value)}
                     className="col-span-3"
+                />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                    <Label htmlFor="private-mode">غرفة خاصة</Label>
+                    <p className="text-xs text-muted-foreground">
+                       إخفاء الغرفة من قائمة الغرف المتاحة في الردهة.
+                    </p>
+                </div>
+                <Switch
+                    id="private-mode"
+                    checked={tempIsPrivate}
+                    onCheckedChange={setTempIsPrivate}
                 />
             </div>
             <div className="space-y-2 text-center">
