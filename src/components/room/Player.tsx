@@ -93,13 +93,22 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   // --- Generic Player Control ---
   const getCurrentPlayerTime = () => {
-    if (ytPlayerRef.current) return ytPlayerRef.current.getCurrentTime();
-    if (htmlPlayerRef.current) return htmlPlayerRef.current.currentTime;
+    try {
+        if (ytPlayerRef.current) return ytPlayerRef.current.getCurrentTime();
+        if (htmlPlayerRef.current) return htmlPlayerRef.current.currentTime;
+    } catch(e) {
+        console.warn("Couldn't get player time", e);
+    }
     return 0;
   }
+
   const getPlayerState = () => {
-     if (ytPlayerRef.current) return ytPlayerRef.current.getPlayerState();
-     if (htmlPlayerRef.current) return htmlPlayerRef.current.paused ? 2 : 1;
+     try {
+        if (ytPlayerRef.current) return ytPlayerRef.current.getPlayerState();
+        if (htmlPlayerRef.current) return htmlPlayerRef.current.paused ? 2 : 1;
+     } catch(e) {
+        console.warn("Couldn't get player state", e);
+     }
      return -1; // unstarted
   }
 
@@ -117,11 +126,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     // Sync volume for all users
     const newVolume = playerState.volume ?? 0.8;
     setVolume(newVolume);
-    if (ytPlayerRef.current) {
-        ytPlayerRef.current.setVolume(newVolume * 100);
-    }
-    if (htmlPlayerRef.current) {
-        htmlPlayerRef.current.volume = newVolume;
+    try {
+        if (ytPlayerRef.current) {
+            ytPlayerRef.current.setVolume(newVolume * 100);
+        }
+        if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.volume = newVolume;
+        }
+    } catch (e) {
+        console.warn("Could not set volume", e);
     }
     
     // Non-hosts just sync to the host's state
@@ -152,24 +165,28 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     if (!player) return;
 
-    const playerStatus = getStatus();
+    try {
+        const playerStatus = getStatus();
 
-    // Sync play/pause state
-    if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
-        play();
-    } else if (!playerState.isPlaying && playerStatus === 1) {
-        pause();
-    }
+        // Sync play/pause state
+        if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
+            play();
+        } else if (!playerState.isPlaying && playerStatus === 1) {
+            pause();
+        }
 
-    // Sync seek time, accounting for latency
-    const hostTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
-    const currentTime = getCurrentTime();
-    
-    // Allow a larger discrepancy (e.g., 2 seconds) before forcing a sync to avoid jitter
-    if (Math.abs(currentTime - hostTime) > 2) {
-      isSeekingRef.current = true;
-      seek(hostTime);
-      setTimeout(() => { isSeekingRef.current = false; }, 1000);
+        // Sync seek time, accounting for latency
+        const hostTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const currentTime = getCurrentTime();
+        
+        // Allow a larger discrepancy (e.g., 2 seconds) before forcing a sync to avoid jitter
+        if (Math.abs(currentTime - hostTime) > 2 && !isSeekingRef.current) {
+          isSeekingRef.current = true;
+          seek(hostTime);
+          setTimeout(() => { isSeekingRef.current = false; }, 1000);
+        }
+    } catch (e) {
+        console.warn("Error syncing player state:", e);
     }
   }, [playerState, canControl, urlType]);
 
@@ -212,12 +229,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
     const shouldBePlaying = !(playerState?.isPlaying);
     
-    if (urlType === 'youtube' && ytPlayerRef.current) {
-      shouldBePlaying ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
-    } else if (urlType === 'direct' && htmlPlayerRef.current) {
-      shouldBePlaying ? htmlPlayerRef.current.play().catch(console.error) : htmlPlayerRef.current.pause();
-    } else {
-        return;
+    try {
+      if (urlType === 'youtube' && ytPlayerRef.current) {
+        shouldBePlaying ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
+      } else if (urlType === 'direct' && htmlPlayerRef.current) {
+        shouldBePlaying ? htmlPlayerRef.current.play().catch(console.error) : htmlPlayerRef.current.pause();
+      } else {
+          return;
+      }
+    } catch (e) {
+      console.warn("Could not toggle play", e);
+      return;
     }
   
     // Immediately sync state with other clients
@@ -229,32 +251,45 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const currentTime = getCurrentPlayerTime();
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     
-    if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
-    if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+    try {
+        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
+        if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+    } catch (e) {
+        console.warn("Could not seek", e);
+        return;
+    }
 
     handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
   }, [canControl, handleStateChange, duration]);
 
   const handleSliderChange = (value: number[]) => {
-    if (!canControl) return;
+    if (!canControl || !isPlayerReady.current) return;
     const newTime = value[0];
-    setProgress(newTime); // Update UI immediately for responsiveness
+    setProgress(newTime);
     isSeekingRef.current = true;
     
-    if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
-    if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+    try {
+        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
+        if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+    } catch (e) {
+        console.warn("Could not seek on slider change", e);
+    }
     
-    handleStateChange({ seekTime: newTime });
+    handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
     
-    setTimeout(() => { isSeekingRef.current = false; }, 500); // Prevent state updates for a short time after seeking
+    setTimeout(() => { isSeekingRef.current = false; }, 500);
   };
   
   const handleVolumeChange = (newVolume: number[]) => {
     const vol = newVolume[0];
     setVolume(vol);
 
-    if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
-    if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
+    try {
+        if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
+        if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
+    } catch (e) {
+        console.warn("Could not set volume on change", e);
+    }
     
     if(canControl) {
         handleStateChange({ volume: vol });
@@ -309,7 +344,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(initialVolume);
 
     if (playerState) {
-        const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const initialSeekTime = canControl ? playerState.seekTime : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         const seekTo = Math.min(initialSeekTime, ytDuration);
         event.target.seekTo(seekTo, true);
         if (playerState.isPlaying) event.target.playVideo();
@@ -321,14 +356,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const currentTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
     if (event.data === 0) { // Ended
       onVideoEnded();
-    } else if (canControl && (event.data === 1 || event.data === 2)) { // Playing or Paused
-      if (playerState?.isPlaying !== (event.data === 1)) {
-        handleStateChange({ isPlaying: event.data === 1, seekTime: currentTime });
+    } else if (canControl) {
+      const isPlaying = event.data === 1;
+      if (playerState?.isPlaying !== isPlaying) {
+        handleStateChange({ isPlaying: isPlaying, seekTime: currentTime });
       }
-      setProgress(currentTime);
-    } else if (event.data === 1 || event.data === 2) { // for viewers
-      setProgress(currentTime);
     }
+    setProgress(currentTime);
   };
 
   // --- HTML5 Player Event Handlers ---
@@ -343,7 +377,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(initialVolume);
 
     if (playerState) {
-        const initialSeekTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const initialSeekTime = canControl ? playerState.seekTime : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
         const seekTo = Math.min(initialSeekTime, htmlDuration);
         htmlPlayerRef.current.currentTime = seekTo;
         if (playerState.isPlaying) htmlPlayerRef.current.play().catch(console.error);

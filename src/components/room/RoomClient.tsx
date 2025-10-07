@@ -184,6 +184,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   
   const [previewVideo, setPreviewVideo] = useState<YouTubeVideo | null>(null);
   const previewPlayerRef = useRef<YouTubePlayer | null>(null);
+  const [recentlyAddedToPlaylist, setRecentlyAddedToPlaylist] = useState<Set<string>>(new Set());
+
   
   // Room settings state
   const [tempRoomName, setTempRoomName] = useState('');
@@ -465,7 +467,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       };
       const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
       set(playlistRef, newItem);
-      console.log(`تمت إضافة "${video.snippet.title}" إلى قائمة التشغيل.`);
+
+      setRecentlyAddedToPlaylist(prev => {
+        const newSet = new Set(prev);
+        newSet.add(video.id.videoId);
+        return newSet;
+      });
+      setTimeout(() => {
+        setRecentlyAddedToPlaylist(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(video.id.videoId);
+            return newSet;
+        });
+      }, 2000);
   };
   
   const handleAddUrlToPlaylist = async (url: string) => {
@@ -1003,36 +1017,56 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 {searchResults.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {searchResults.map((video) => (
-                            <div
-                                key={video.id.videoId}
-                                className="group cursor-pointer"
-                                onClick={() => setPreviewVideo(video)}
-                            >
-                                <div className="relative aspect-video rounded-lg overflow-hidden mb-2 shadow-lg transition-transform duration-200 group-hover:scale-105">
-                                    <Image
-                                        src={video.snippet.thumbnails.high.url}
-                                        alt={video.snippet.title}
-                                        fill
-                                        className="object-cover"
-                                    />
-                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-2">
-                                        {video.contentDetails?.duration && (
-                                            <Badge
-                                                variant="secondary"
-                                                className="absolute bottom-2 right-2 backdrop-blur-sm"
-                                            >
-                                               {parseDuration(video.contentDetails.duration)}
-                                            </Badge>
-                                        )}
-                                     </div>
-                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Play className="w-16 h-16 text-white/80"/>
-                                     </div>
+                            <div key={video.id.videoId}>
+                                <div
+                                    className="group cursor-pointer"
+                                    onClick={() => setPreviewVideo(video)}
+                                >
+                                    <div className="relative aspect-video rounded-lg overflow-hidden mb-2 shadow-lg transition-transform duration-200 group-hover:scale-105">
+                                        <Image
+                                            src={video.snippet.thumbnails.high.url}
+                                            alt={video.snippet.title}
+                                            fill
+                                            className="object-cover"
+                                        />
+                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-2">
+                                            {video.contentDetails?.duration && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="absolute bottom-2 right-2 backdrop-blur-sm"
+                                                >
+                                                   {parseDuration(video.contentDetails.duration)}
+                                                </Badge>
+                                            )}
+                                         </div>
+                                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Play className="w-16 h-16 text-white/80"/>
+                                         </div>
+                                    </div>
+                                    <h3 className="font-semibold text-foreground text-sm line-clamp-2">
+                                        {video.snippet.title}
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground">{video.snippet.channelTitle}</p>
                                 </div>
-                                <h3 className="font-semibold text-foreground text-sm line-clamp-2">
-                                    {video.snippet.title}
-                                </h3>
-                                <p className="text-xs text-muted-foreground">{video.snippet.channelTitle}</p>
+                                <Button 
+                                    onClick={() => handleAddToPlaylistFromSearch(video)}
+                                    variant="secondary"
+                                    size="sm"
+                                    className="w-full mt-2"
+                                    disabled={recentlyAddedToPlaylist.has(video.id.videoId)}
+                                >
+                                    {recentlyAddedToPlaylist.has(video.id.videoId) ? (
+                                        <>
+                                            <Check className="me-2"/>
+                                            تمت الإضافة
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ListMusic className="me-2"/>
+                                            إضافة إلى القائمة
+                                        </>
+                                    )}
+                                </Button>
                             </div>
                         ))}
                     </div>
@@ -1051,6 +1085,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 </DialogHeader>
                 <div className="aspect-video w-full rounded-lg overflow-hidden shadow-md bg-black relative">
                      <YouTube
+                        key={previewVideo.id.videoId}
                         videoId={previewVideo.id.videoId}
                         opts={{
                             height: '100%',
@@ -1065,9 +1100,12 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     />
                 </div>
                  <div className="flex gap-2">
-                    <Button onClick={() => { handleAddToPlaylistFromSearch(previewVideo); setPreviewVideo(null); }} variant="secondary" size="lg" className="w-full">
-                        <ListMusic className="me-2" />
-                        إضافة إلى القائمة
+                    <Button onClick={() => { handleAddToPlaylistFromSearch(previewVideo); }} variant="secondary" size="lg" className="w-full" disabled={recentlyAddedToPlaylist.has(previewVideo.id.videoId)}>
+                       {recentlyAddedToPlaylist.has(previewVideo.id.videoId) ? (
+                           <><Check className="me-2" /> تمت الإضافة</>
+                       ) : (
+                           <><ListMusic className="me-2" /> إضافة إلى القائمة</>
+                       )}
                     </Button>
                     <Button onClick={handleSetVideoFromPreview} size="lg" className="w-full">
                         <Clapperboard className="me-2" />
@@ -1191,12 +1229,8 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
                      const remainingMembers: Member[] = finalRoomData.members ? Object.values(finalRoomData.members) : [];
 
-                     // If the room becomes empty, do not pause the video.
-                     if (remainingMembers.length === 0) {
-                         // The video keeps playing.
-                     }
                      // If I was the host, transfer host
-                     else if (finalRoomData.host === user.name) {
+                     if (remainingMembers.length > 0 && finalRoomData.host === user.name) {
                         const moderators: string[] = finalRoomData.moderators || [];
                         const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
                         
