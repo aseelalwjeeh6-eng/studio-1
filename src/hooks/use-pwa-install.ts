@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -11,24 +11,35 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+// Store the prompt event in a global variable to persist across component mounts/unmounts
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+
 export const usePWAInstall = () => {
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [canInstall, setCanInstall] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
+      deferredPrompt = event as BeforeInstallPromptEvent;
+      // Use localStorage to persist the ability to show the prompt
+      localStorage.setItem('canInstallPWA', 'true');
       setCanInstall(true);
+      console.log('beforeinstallprompt event fired and captured.');
     };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     const handleAppInstalled = () => {
+      console.log('PWA was installed');
+      deferredPrompt = null;
+      localStorage.removeItem('canInstallPWA');
       setCanInstall(false);
-      setInstallPrompt(null);
     };
+    
+    // Check localStorage on initial load
+    if (localStorage.getItem('canInstallPWA') === 'true' && deferredPrompt) {
+        setCanInstall(true);
+    }
 
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
@@ -37,19 +48,23 @@ export const usePWAInstall = () => {
     };
   }, []);
 
-  const installPWA = async () => {
-    if (!installPrompt) return;
+  const installPWA = useCallback(async () => {
+    if (!deferredPrompt) {
+        console.log('Installation prompt not available.');
+        return;
+    }
 
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
     if (outcome === 'accepted') {
       console.log('User accepted the install prompt');
+      // The 'appinstalled' event will handle cleanup
     } else {
       console.log('User dismissed the install prompt');
+      // Keep canInstall true so the user can try again later
     }
-    setInstallPrompt(null);
-    setCanInstall(false);
-  };
+  }, []);
 
   return { canInstall, installPWA };
 };
