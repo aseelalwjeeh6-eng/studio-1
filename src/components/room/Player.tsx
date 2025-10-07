@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -79,7 +80,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const htmlPlayerRef = useRef<HTMLVideoElement | null>(null);
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
-  const hostSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -176,7 +177,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
 
         // Sync seek time, accounting for latency
-        const hostTime = playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const hostTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         const currentTime = getCurrentTime();
         
         // Allow a larger discrepancy (e.g., 2 seconds) before forcing a sync to avoid jitter
@@ -190,38 +191,39 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState, canControl, urlType]);
 
-  // Effect for host to update progress bar and sync state periodically
+  // Effect to update local progress bar UI
   useEffect(() => {
-    if (canControl && isPlayerReady.current && playerState?.isPlaying) {
-      hostSyncIntervalRef.current = setInterval(() => {
-        if (isSeekingRef.current) return;
-        const currentTime = getCurrentPlayerTime();
-        if (currentTime !== null && !isNaN(currentTime)) {
-            setProgress(currentTime);
-            // Periodically sync host time to prevent drift
-            handleStateChange({ seekTime: currentTime });
+    const updateProgress = () => {
+        if (playerState?.isPlaying) {
+            const currentTime = getCurrentPlayerTime();
+            if (currentTime !== null && !isNaN(currentTime) && currentTime <= duration) {
+                setProgress(currentTime);
+            }
         }
-      }, 1000);
-    } else {
-      if (hostSyncIntervalRef.current) {
-        clearInterval(hostSyncIntervalRef.current);
-      }
+    };
+    
+    if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+    }
+    
+    if (playerState?.isPlaying) {
+        progressIntervalRef.current = setInterval(updateProgress, 500);
     }
 
     return () => {
-      if (hostSyncIntervalRef.current) clearInterval(hostSyncIntervalRef.current);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     };
-  }, [canControl, playerState?.isPlaying, handleStateChange]);
+  }, [playerState?.isPlaying, duration]);
   
-  // Update local progress for viewers
+  // Effect to set initial progress from playerState
   useEffect(() => {
-    if (!canControl && playerState) {
-        const newProgress = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
-        if (newProgress <= duration) {
-            setProgress(newProgress);
+    if (playerState) {
+        const initialProgress = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
+        if (initialProgress <= duration) {
+             setProgress(initialProgress);
         }
     }
-  }, [playerState, canControl, duration]);
+  }, [playerState, duration]);
 
   // --- Player Controls ---
   const togglePlay = useCallback(() => {
@@ -242,24 +244,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       return;
     }
   
-    // Immediately sync state with other clients
-    handleStateChange({ isPlaying: shouldBePlaying, seekTime: getCurrentPlayerTime() });
-  }, [canControl, handleStateChange, urlType, playerState?.isPlaying]);
+    // handleStateChange is now called from onYtStateChange or onHtmlStateChange
+  }, [canControl, urlType, playerState?.isPlaying]);
 
   const seek = useCallback((amount: number) => {
     if (!canControl || !isPlayerReady.current) return;
     const currentTime = getCurrentPlayerTime();
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     
+    isSeekingRef.current = true;
     try {
         if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     } catch (e) {
         console.warn("Could not seek", e);
+        isSeekingRef.current = false;
         return;
     }
-
+    setProgress(newTime);
     handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
+    
+    setTimeout(() => { isSeekingRef.current = false; }, 500);
   }, [canControl, handleStateChange, duration]);
 
   const handleSliderChange = (value: number[]) => {
@@ -274,10 +279,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) {
         console.warn("Could not seek on slider change", e);
     }
-    
-    handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
-    
-    setTimeout(() => { isSeekingRef.current = false; }, 500);
+  };
+  
+  const handleSliderCommit = (value: number[]) => {
+      if (!canControl || !isPlayerReady.current) return;
+      const newTime = value[0];
+      handleStateChange({ isPlaying: getPlayerState() === 1, seekTime: newTime });
+      setTimeout(() => { isSeekingRef.current = false; }, 200);
   };
   
   const handleVolumeChange = (newVolume: number[]) => {
@@ -344,25 +352,33 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(initialVolume);
 
     if (playerState) {
-        const initialSeekTime = canControl ? playerState.seekTime : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const initialSeekTime = canControl || !playerState.isPlaying
+            ? playerState.seekTime
+            : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        
         const seekTo = Math.min(initialSeekTime, ytDuration);
         event.target.seekTo(seekTo, true);
         if (playerState.isPlaying) event.target.playVideo();
+        else event.target.pauseVideo();
     }
   };
 
   const onYtStateChange = (event: { data: number }) => {
-    if (isSeekingRef.current) return;
+    if (!canControl || isSeekingRef.current) return;
     const currentTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
+    
     if (event.data === 0) { // Ended
+      handleStateChange({ isPlaying: false, seekTime: 0 });
       onVideoEnded();
-    } else if (canControl) {
-      const isPlaying = event.data === 1;
-      if (playerState?.isPlaying !== isPlaying) {
-        handleStateChange({ isPlaying: isPlaying, seekTime: currentTime });
+    } else if (event.data === 1) { // Playing
+      if (!playerState?.isPlaying) {
+        handleStateChange({ isPlaying: true, seekTime: currentTime });
+      }
+    } else if (event.data === 2) { // Paused
+       if (playerState?.isPlaying) {
+        handleStateChange({ isPlaying: false, seekTime: currentTime });
       }
     }
-    setProgress(currentTime);
   };
 
   // --- HTML5 Player Event Handlers ---
@@ -377,26 +393,31 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(initialVolume);
 
     if (playerState) {
-        const initialSeekTime = canControl ? playerState.seekTime : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const initialSeekTime = canControl || !playerState.isPlaying
+            ? playerState.seekTime
+            : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        
         const seekTo = Math.min(initialSeekTime, htmlDuration);
         htmlPlayerRef.current.currentTime = seekTo;
         if (playerState.isPlaying) htmlPlayerRef.current.play().catch(console.error);
+        else htmlPlayerRef.current.pause();
     }
   };
   
   const onHtmlStateChange = () => {
-      if (isSeekingRef.current || !htmlPlayerRef.current) return;
-      if (canControl) {
-        const isPlaying = !htmlPlayerRef.current.paused;
-        if (playerState?.isPlaying !== isPlaying) {
+      if (!canControl || isSeekingRef.current || !htmlPlayerRef.current) return;
+      
+      const isPlaying = !htmlPlayerRef.current.paused;
+      if (playerState?.isPlaying !== isPlaying) {
           handleStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
-        }
       }
-      setProgress(htmlPlayerRef.current.currentTime);
   };
 
   const onHtmlEnded = () => {
-    onVideoEnded();
+    if (canControl) {
+        handleStateChange({ isPlaying: false, seekTime: 0 });
+        onVideoEnded();
+    }
   }
 
   // --- Rendering ---
@@ -420,14 +441,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     height: '100%',
                     width: '100%',
                     playerVars: {
-                      autoplay: 1,
+                      autoplay: playerState?.isPlaying ? 1 : 0,
                       controls: 0,
                       rel: 0,
                       showinfo: 0,
                       modestbranding: 1,
                       iv_load_policy: 3,
                       disablekb: 1,
-                      start: playerState?.seekTime ? Math.floor(playerState.seekTime) : 0
                     },
                   }}
                   onReady={onYtReady}
@@ -448,7 +468,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     onPause={onHtmlStateChange}
                     onEnded={onHtmlEnded}
                     playsInline
-                    autoPlay
+                    autoPlay={playerState?.isPlaying}
                 />
             );
 
@@ -528,6 +548,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     max={duration}
                     step={1}
                     onValueChange={handleSliderChange}
+                    onValueCommit={handleSliderCommit}
                 />
                <span>{formatTime(duration)}</span>
             </>
@@ -587,3 +608,4 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
