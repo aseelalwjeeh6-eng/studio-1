@@ -302,11 +302,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   };
   
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    setShowControls(true);
-    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
-    
-    if (urlType === 'empty' || urlType === 'iframe') return;
+    if (urlType === 'empty' || urlType === 'iframe') {
+        if(canControl) onSearchClick();
+        return;
+    };
 
     const DOUBLE_CLICK_THRESHOLD = 300;
     const currentTime = Date.now();
@@ -316,15 +315,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     if (
       currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD &&
-      clickSide === lastClickSideRef.current &&
-      clickSide !== 'center'
+      clickSide === lastClickSideRef.current
     ) {
-      // Double click detected on sides
+      // Double click detected
       if (canControl) {
           if (clickSide === 'left') seek(-5);
           if (clickSide === 'right') seek(5);
       }
-      // Reset after double click
+      // Reset after double click to prevent triple-click issues
       lastClickTimeRef.current = 0;
       lastClickSideRef.current = null;
     } else {
@@ -332,9 +330,18 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       lastClickTimeRef.current = currentTime;
       lastClickSideRef.current = clickSide;
       if (clickSide === 'center') {
+        // Toggle play/pause on single click in the center
         togglePlay();
+      } else {
+        // For side clicks, just toggle controls
+        setShowControls(prev => !prev);
       }
     }
+
+    // Always manage controls visibility on any click
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    setShowControls(true);
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
   };
   
   // --- YouTube Player Event Handlers ---
@@ -361,21 +368,24 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   const onYtStateChange = (event: { data: number }) => {
     if (!canControl || isSeekingRef.current) return;
-    const currentTime = ytPlayerRef.current?.getCurrentTime() ?? 0;
     
-    if (event.data === 0) { // Ended
-      handleStateChange({ isPlaying: false, seekTime: 0 });
-      onVideoEnded();
-    } else if (event.data === 1) { // Playing
+    if (event.data === 1) { // Playing
       if (!playerState?.isPlaying) {
-        handleStateChange({ isPlaying: true, seekTime: currentTime });
+        handleStateChange({ isPlaying: true, seekTime: ytPlayerRef.current?.getCurrentTime() });
       }
     } else if (event.data === 2) { // Paused
        if (playerState?.isPlaying) {
-        handleStateChange({ isPlaying: false, seekTime: currentTime });
+        handleStateChange({ isPlaying: false, seekTime: ytPlayerRef.current?.getCurrentTime() });
       }
     }
   };
+
+  const onYtEnd = () => {
+    if (canControl) {
+      onVideoEnded();
+    }
+  };
+
 
   // --- HTML5 Player Event Handlers ---
   const onHtmlReady = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
@@ -410,7 +420,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   const onHtmlEnded = () => {
     if (canControl) {
-        handleStateChange({ isPlaying: false, seekTime: 0 });
         onVideoEnded();
     }
   }
@@ -447,7 +456,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                   }}
                   onReady={onYtReady}
                   onStateChange={onYtStateChange}
-                  onEnd={onVideoEnded}
+                  onEnd={onYtEnd}
                   className="w-full h-full"
                 />
             );
