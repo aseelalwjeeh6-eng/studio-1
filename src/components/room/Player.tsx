@@ -4,11 +4,14 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Button } from '@/components/ui/button';
-import { Play, Search, Film, Pause, Volume2, Volume1, VolumeX } from 'lucide-react';
+import { Play, Search, Film, Pause, Volume2, Volume1, VolumeX, Settings, YoutubeIcon } from 'lucide-react';
 import { PlayerState } from './RoomClient';
 import { Slider } from '../ui/slider';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+import { Label } from '../ui/label';
+
 
 interface PlayerProps {
   videoUrl: string;
@@ -86,6 +89,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
+  const [quality, setQuality] = useState('360p');
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
@@ -123,25 +127,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   useEffect(() => {
     if (!isPlayerReady.current || !playerState) return;
     
-    // Sync volume for all users
     const newVolume = playerState.volume ?? 0.8;
     setVolume(newVolume);
     try {
-        if (ytPlayerRef.current) {
-            ytPlayerRef.current.setVolume(newVolume * 100);
-        }
-        if (htmlPlayerRef.current) {
-            htmlPlayerRef.current.volume = newVolume;
-        }
+        if (ytPlayerRef.current) ytPlayerRef.current.setVolume(newVolume * 100);
+        if (htmlPlayerRef.current) htmlPlayerRef.current.volume = newVolume;
     } catch (e) {
         console.warn("Could not set volume", e);
     }
     
-    // Non-hosts just sync to the host's state
     if (canControl) return;
 
     let player: YouTubePlayer | HTMLVideoElement | null = null;
-    let getStatus: () => number = () => -1; // -1: unstarted, 0: ended, 1: playing, 2: paused, 3: buffering
+    let getStatus: () => number = () => -1;
     let play: () => void = () => {};
     let pause: () => void = () => {};
     let seek: (time: number) => void = () => {};
@@ -177,8 +175,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         const hostTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         const currentTime = getCurrentTime();
         
-        if (Math.abs(currentTime - hostTime) > 2 && !isSeekingRef.current) {
+        if (Math.abs(currentTime - hostTime) > 1 && !isSeekingRef.current) {
           isSeekingRef.current = true;
+          console.log(`Resyncing: local=${currentTime.toFixed(2)}s, host=${hostTime.toFixed(2)}s, diff=${(currentTime - hostTime).toFixed(2)}s`);
           seek(hostTime);
           setTimeout(() => { isSeekingRef.current = false; }, 1000);
         }
@@ -187,7 +186,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState, canControl, urlType]);
 
-  // Effect to update local progress bar UI from the player itself
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
@@ -208,7 +206,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     };
   }, [playerState?.isPlaying, duration, getCurrentPlayerTime, playerState]);
   
-  // Effect to set initial progress from playerState when it changes
   useEffect(() => {
     if (playerState && duration > 0) {
         const initialProgress = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
@@ -218,7 +215,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState, duration]);
 
-  // --- Player Controls ---
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
   
@@ -330,7 +326,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   };
   
-  // --- YouTube Player Event Handlers ---
   const onYtReady = (event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
@@ -375,8 +370,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   };
 
-
-  // --- HTML5 Player Event Handlers ---
   const onHtmlReady = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
@@ -413,7 +406,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }
 
-  // --- Rendering ---
   const formatTime = (seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return '00:00';
     const date = new Date(0);
@@ -441,6 +433,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                       modestbranding: 1,
                       iv_load_policy: 3,
                       disablekb: 1,
+                      vq: quality,
                     },
                   }}
                   onReady={onYtReady}
@@ -554,7 +547,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                <span className="text-xs md:text-sm">{formatTime(duration)}</span>
             </>
            )}
-
+           
             <Popover>
                 <PopoverTrigger asChild>
                     <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-10 md:w-10">

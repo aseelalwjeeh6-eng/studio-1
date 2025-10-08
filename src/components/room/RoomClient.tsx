@@ -10,7 +10,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock, EyeOff } from 'lucide-react';
+import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock, EyeOff, Copy } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -31,6 +31,8 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Switch } from '../ui/switch';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
 
@@ -88,6 +90,14 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     const { user } = useUserSession();
     const avatar = PlaceHolderImages.find(p => p.id === user?.avatarId) ?? PlaceHolderImages[0];
 
+    const [isCopied, setIsCopied] = useState(false);
+    const handleCopy = () => {
+        navigator.clipboard.writeText(roomId).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2000);
+        });
+    }
+
     return (
         <header className="flex items-center justify-between p-2 md:p-4 w-full flex-shrink-0">
             <div className="flex items-center gap-1 md:gap-2">
@@ -140,7 +150,19 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
             <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
                 <div className='text-right'>
                     <p className='font-bold text-foreground truncate max-w-[100px] sm:max-w-xs'>{roomName || `غرفة ${hostName}`}</p>
-                    <p>ID: {roomId.slice(0,10)}...</p>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button onClick={handleCopy} className="flex items-center gap-1 hover:text-accent transition-colors">
+                                    <span>ID: {roomId}</span>
+                                    {isCopied ? <Check className="w-3 h-3 text-green-500"/> : <Copy className="w-3 h-3"/>}
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{isCopied ? 'تم النسخ!' : 'انسخ للمشاركة'}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 </div>
                 <Avatar className="h-8 w-8 md:h-10 md:w-10">
                     <AvatarImage src={avatar?.imageUrl} />

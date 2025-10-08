@@ -5,15 +5,15 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw } from 'lucide-react';
+import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw, Copy } from 'lucide-react';
 import useUserSession from '@/hooks/use-user-session';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, goOnline } from 'firebase/database';
 import { createRoom } from '@/lib/firebase-service';
-import { v4 as uuidv4 } from 'uuid';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
 
 interface RoomData {
   id: string;
@@ -29,6 +29,8 @@ export default function LobbyPage() {
   const [roomId, setRoomId] = useState('');
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [activeRooms, setActiveRooms] = useState<RoomData[]>([]);
+  const [userHostedRoom, setUserHostedRoom] = useState<RoomData | null>(null);
+  const [isLoadingHostedRoom, setIsLoadingHostedRoom] = useState(true);
   const router = useRouter();
   const { isLoaded, user } = useUserSession();
 
@@ -37,7 +39,6 @@ export default function LobbyPage() {
       router.push('/');
     }
     if (isLoaded && user) {
-      // Connect to Firebase presence system when user is loaded
       goOnline(database);
     }
   }, [isLoaded, user, router]);
@@ -46,75 +47,49 @@ export default function LobbyPage() {
     const roomsRef = ref(database, 'rooms');
     const listener = onValue(roomsRef, (snapshot) => {
       const roomsData = snapshot.val();
+      const loadedRooms: RoomData[] = [];
+      let hostedRoom: RoomData | null = null;
+      
       if (roomsData) {
-        const loadedRooms = Object.keys(roomsData)
-          .map(key => {
-            const room = roomsData[key];
-            const memberCount = room.members ? Object.keys(room.members).length : 0;
-            return {
-              id: key,
-              name: room.name,
-              host: room.host,
-              memberCount: memberCount,
-              backgroundUrl: room.backgroundUrl,
-              avatarUrl: room.avatarUrl,
-              isPrivate: room.isPrivate || false,
-            };
-          })
-          .filter(room => !room.isPrivate); // Filter out private rooms
-        setActiveRooms(loadedRooms);
-      } else {
-        setActiveRooms([]);
+        Object.keys(roomsData).forEach(key => {
+          const room = roomsData[key];
+          const memberCount = room.members ? Object.keys(room.members).length : 0;
+          const roomDetails: RoomData = {
+            id: key,
+            name: room.name,
+            host: room.host,
+            memberCount: memberCount,
+            backgroundUrl: room.backgroundUrl,
+            avatarUrl: room.avatarUrl,
+            isPrivate: room.isPrivate || false,
+          };
+          
+          if (user && room.host === user.name) {
+            hostedRoom = roomDetails;
+          }
+          
+          if (!roomDetails.isPrivate) {
+            loadedRooms.push(roomDetails);
+          }
+        });
       }
+      
+      setActiveRooms(loadedRooms.filter(r => r.host !== user?.name));
+      setUserHostedRoom(hostedRoom);
+      setIsLoadingHostedRoom(false);
     });
 
-    // Cleanup listener on component unmount
     return () => off(roomsRef, 'value', listener);
-  }, []);
-
-  const userHostedRoom = useMemo(() => {
-    if (!user) return null;
-    // We check the original full list from a direct ref, not the filtered public one
-    const roomsRef = ref(database, 'rooms');
-    let hostedRoom: RoomData | null = null;
-    onValue(roomsRef, (snapshot) => {
-        const roomsData = snapshot.val();
-        if (roomsData) {
-            const found = Object.keys(roomsData)
-                .map(key => ({ id: key, ...roomsData[key] }))
-                .find(room => room.host === user.name);
-            if (found) {
-                hostedRoom = {
-                    id: found.id,
-                    host: found.host,
-                    name: found.name,
-                    memberCount: found.members ? Object.keys(found.members).length : 0,
-                };
-            }
-        }
-    }, { onlyOnce: true });
-    return hostedRoom;
   }, [user]);
 
-
   const handleCreateRoom = async () => {
-    if (!user || isCreatingRoom) return;
-
-    // If user already has an active room, redirect them there.
-    if (userHostedRoom) {
-        router.push(`/rooms/${userHostedRoom.id}`);
-        return;
-    }
+    if (!user || isCreatingRoom || userHostedRoom) return;
     
     setIsCreatingRoom(true);
-    const newRoomId = uuidv4();
     
     try {
-      await createRoom({
-        hostName: user.name,
-        roomId: newRoomId,
-      });
-      router.push(`/rooms/${newRoomId}`);
+      const newRoom = await createRoom({ hostName: user.name });
+      router.push(`/rooms/${newRoom.id}`);
     } catch (error) {
       console.error("Failed to create room:", error);
       console.error('فشل في إنشاء الغرفة.');
@@ -151,29 +126,54 @@ export default function LobbyPage() {
 
         <div className="grid md:grid-cols-2 gap-8">
             <div className="space-y-8">
-                <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                        {userHostedRoom ? <RotateCcw className="text-accent" /> : <PlusCircle className="text-accent" />}
-                        <span>{userHostedRoom ? 'العودة إلى غرفتك' : 'إنشاء غرفة جديدة'}</span>
-                        </CardTitle>
-                        <CardDescription>
-                        {userHostedRoom ? 'لديك غرفة نشطة بالفعل. اضغط للعودة إليها.' : 'ابدأ غرفة مشاهدة جديدة وادعُ أصدقائك.'}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Button onClick={handleCreateRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
-                        {isCreatingRoom ? (
-                            <Loader2 className="me-2 h-5 w-5 animate-spin" />
-                        ) : userHostedRoom ? (
-                            <LogIn className="me-2 h-5 w-5" />
-                        ) : (
-                            <Clapperboard className="me-2 h-5 w-5" />
-                        )}
-                         {userHostedRoom ? 'العودة إلى غرفتي' : 'إنشاء غرفة'}
-                        </Button>
-                    </CardContent>
-                </Card>
+                {isLoadingHostedRoom ? (
+                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20 h-[220px] flex items-center justify-center">
+                        <Loader2 className="h-10 w-10 animate-spin text-accent" />
+                    </Card>
+                ) : userHostedRoom ? (
+                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20 group relative overflow-hidden">
+                         <Image 
+                            src={userHostedRoom.backgroundUrl || userHostedRoom.avatarUrl || PlaceHolderImages.find(p => p.id === 'room-bg-1')?.imageUrl || ''}
+                            alt={userHostedRoom.name || ''}
+                            fill
+                            className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent" />
+                        <div className='relative flex flex-col justify-end h-full p-6'>
+                            <CardHeader className="p-0">
+                                <CardTitle className="text-2xl text-white drop-shadow-lg">{userHostedRoom.name}</CardTitle>
+                                <CardDescription className="text-gray-300 flex items-center gap-2">
+                                     <Users className="w-4 h-4" />
+                                     {userHostedRoom.memberCount} {userHostedRoom.memberCount !== 1 ? 'أعضاء' : 'عضو'}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-0 mt-4">
+                                <Button onClick={() => router.push(`/rooms/${userHostedRoom.id}`)} className="h-12 text-lg w-full">
+                                    <LogIn className="me-2 h-5 w-5" />
+                                    العودة إلى غرفتي
+                                </Button>
+                            </CardContent>
+                        </div>
+                    </Card>
+                ) : (
+                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <PlusCircle className="text-accent" />
+                                <span>إنشاء غرفة جديدة</span>
+                            </CardTitle>
+                            <CardDescription>
+                                ابدأ غرفة مشاهدة جديدة وادعُ أصدقائك.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button onClick={handleCreateRoom} className="h-12 text-lg w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isCreatingRoom}>
+                                {isCreatingRoom ? <Loader2 className="me-2 h-5 w-5 animate-spin" /> : <Clapperboard className="me-2 h-5 w-5" />}
+                                إنشاء غرفة
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
                     <CardHeader>
@@ -191,7 +191,7 @@ export default function LobbyPage() {
                             type="text"
                             placeholder="أدخل رمز الغرفة..."
                             value={roomId}
-                            onChange={(e) => setRoomId(e.target.value)}
+                            onChange={(e) => setRoomId(e.target.value.replace(/[^0-9]/g, ''))}
                             className="h-12 text-center text-lg bg-input/70 border-accent/30 focus:ring-accent flex-grow"
                             required
                         />
@@ -228,7 +228,7 @@ export default function LobbyPage() {
                                                 <p className="font-bold text-foreground truncate max-w-[150px]">{room.name || `غرفة ${room.host}`}</p>
                                                 <p className="text-sm text-muted-foreground flex items-center gap-2">
                                                     <Users className="w-4 h-4" />
-                                                    {room.memberCount} {room.memberCount > 1 ? 'أعضاء' : 'عضو'}
+                                                    {room.memberCount} {room.memberCount !== 1 ? 'أعضاء' : 'عضو'}
                                                 </p>
                                             </div>
                                         </div>

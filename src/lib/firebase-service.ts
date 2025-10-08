@@ -322,37 +322,46 @@ export const sendRoomInvitation = async (senderName: string, recipientName: stri
 };
 
 
-type CreateRoomInput = {
-    hostName: string;
-    roomId: string;
+const generateNumericId = async (length = 8): Promise<string> => {
+    let id = '';
+    let isUnique = false;
+    while (!isUnique) {
+        id = Array.from({ length }, () => Math.floor(Math.random() * 10)).join('');
+        const roomRef = ref(database, `rooms/${id}`);
+        const snapshot = await get(roomRef);
+        if (!snapshot.exists()) {
+            isUnique = true;
+        }
+    }
+    return id;
 };
 
-export const createRoom = async ({ hostName, roomId }: CreateRoomInput): Promise<void> => {
-    const roomRef = ref(database, `rooms/${roomId}`);
-    const snapshot = await get(roomRef);
+type CreateRoomInput = {
+    hostName: string;
+};
 
-    // Only create the room if it doesn't already exist.
-    if (!snapshot.exists()) {
-        const roomName = `غرفة ${hostName}`;
-        
-        // Select a random room avatar from placeholders
-        const roomAvatars = PlaceHolderImages.filter(p => p.id.startsWith('room-avatar-'));
-        const randomAvatar = roomAvatars[Math.floor(Math.random() * roomAvatars.length)];
-        const avatarUrl = randomAvatar ? randomAvatar.imageUrl : `https://picsum.photos/seed/${roomId}/200/200`;
+export const createRoom = async ({ hostName }: CreateRoomInput): Promise<{ id: string }> => {
+    const newRoomId = await generateNumericId();
+    const roomRef = ref(database, `rooms/${newRoomId}`);
+    
+    const roomName = `غرفة ${hostName}`;
+    const roomAvatars = PlaceHolderImages.filter(p => p.id.startsWith('room-avatar-'));
+    const randomAvatar = roomAvatars[Math.floor(Math.random() * roomAvatars.length)];
+    const avatarUrl = randomAvatar ? randomAvatar.imageUrl : `https://picsum.photos/seed/${newRoomId}/200/200`;
 
-        const roomData = {
-          host: hostName,
-          name: roomName,
-          createdAt: serverTimestamp(),
-          videoUrl: '',
-          backgroundUrl: '',
-          avatarUrl: avatarUrl,
-          seatedMembers: {},
-          members: {},
-          moderators: [],
-          playlist: {},
-          isPrivate: false,
-        };
-        await set(roomRef, roomData);
-    }
+    const roomData = {
+        host: hostName,
+        name: roomName,
+        createdAt: serverTimestamp(),
+        videoUrl: '',
+        backgroundUrl: '',
+        avatarUrl: avatarUrl,
+        seatedMembers: {},
+        members: {},
+        moderators: [],
+        playlist: {},
+        isPrivate: false,
+    };
+    await set(roomRef, roomData);
+    return { id: newRoomId };
 };
