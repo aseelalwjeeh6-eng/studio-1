@@ -71,13 +71,8 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                     }
                     return (
                         <div key={msg.id} className="flex flex-col items-end">
-                            <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
-                             <div className={cn(
-                                "max-w-xs p-2 md:p-3 rounded-xl break-words",
-                                isCurrentUser 
-                                    ? "bg-primary text-primary-foreground rounded-br-none" 
-                                    : "bg-secondary text-secondary-foreground rounded-bl-none"
-                            )}>
+                             <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
+                             <div className="max-w-xs p-2 md:p-3 rounded-xl break-words bg-secondary text-secondary-foreground rounded-br-none">
                                 <p className="text-sm md:text-base">{msg.text}</p>
                             </div>
                         </div>
@@ -91,6 +86,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
 const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onBlur }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; onFocus?: () => void; onBlur?: () => void; }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -108,6 +104,7 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onB
             };
             await set(newMsgRef, messageData);
             setNewMessage('');
+            inputRef.current?.blur(); // Blur after sending
         } catch(error) {
             console.error("Error sending message:", error);
         } finally {
@@ -124,6 +121,7 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onB
                     </Button>
                 )}
                 <Input
+                    ref={inputRef}
                     type="text"
                     placeholder="اكتب رسالتك..."
                     value={newMessage}
