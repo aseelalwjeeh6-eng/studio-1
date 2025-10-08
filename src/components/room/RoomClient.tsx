@@ -172,7 +172,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [pinError, setPinError] = useState(false);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isPlaylistOpen, setIsPlaylistOpen]_useState(false);
+  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -811,7 +811,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="w-full flex-1 min-h-0 pb-20">
+            <main className="w-full flex-1 flex flex-col min-h-0 pb-20">
               <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 h-full">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
