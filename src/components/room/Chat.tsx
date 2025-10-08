@@ -72,7 +72,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
+                        <div key={msg.id} className="flex flex-col items-start">
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "max-w-xs p-2 md:p-3 rounded-xl break-words",
@@ -90,10 +90,9 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void;}) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onBlur, inputRef }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; onFocus: () => void; onBlur: () => void; inputRef: React.RefObject<HTMLInputElement> }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
-    const inputRef = useRef<HTMLInputElement>(null);
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -111,7 +110,7 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: 
             };
             await set(newMsgRef, messageData);
             setNewMessage('');
-            inputRef.current?.blur(); // Blur after sending
+            inputRef.current?.blur(); // This will trigger onBlur and exit the "full-screen" mode
         } catch(error) {
             console.error("Error sending message:", error);
         } finally {
@@ -135,6 +134,8 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: 
                     onChange={(e) => setNewMessage(e.target.value)}
                     className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
                     disabled={isSending}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                 />
                 <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
                     <Send className="h-4 w-4" />
