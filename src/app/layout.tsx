@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { AppProviders } from '@/app/providers';
 import Hearts from '@/components/shared/Hearts';
 import Script from 'next/script';
+import { HeartIcon } from '@/components/icons/HeartIcon';
 
 const alegreya = Alegreya({
   subsets: ['latin'],
@@ -26,8 +27,8 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="https://i.ibb.co/TM85sVxb/1759933466523.jpg" />
-        <link rel="apple-touch-icon" href="https://i.ibb.co/TM85sVxb/1759933466523.jpg"></link>
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/favicon.ico"></link>
         <meta name="theme-color" content="#26000A" />
       </head>
       <body className={cn('font-body antialiased', alegreya.className)}>

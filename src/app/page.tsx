@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Image from 'next/image';
+import { HeartIcon } from '@/components/icons/HeartIcon';
 
 
 const PasswordInput = ({ value, onChange }: { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => {
@@ -218,15 +219,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm bg-card/50 backdrop-blur-lg border-accent/20">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex items-center justify-center">
-            <Image
-                src="https://i.ibb.co/TM85sVxb/1759933466523.jpg"
-                alt="اصيل سينما Logo"
-                width={80}
-                height={80}
-                className="h-20 w-20"
-                priority
-            />
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center">
+            <HeartIcon className="h-20 w-20 text-accent" />
           </div>
           <CardTitle className="font-headline text-4xl text-foreground">اصيل سينما</CardTitle>
           <CardDescription className="text-muted-foreground text-lg">
