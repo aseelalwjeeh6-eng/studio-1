@@ -52,7 +52,7 @@ export default function LobbyPage() {
       const loadedRooms: RoomData[] = [];
       let hostedRoom: RoomData | null = null;
       
-      if (roomsData) {
+      if (roomsData && user) {
         Object.keys(roomsData).forEach(key => {
           const room = roomsData[key];
           const memberCount = room.members ? Object.keys(room.members).length : 0;
@@ -66,11 +66,9 @@ export default function LobbyPage() {
             isPrivate: room.isPrivate || false,
           };
           
-          if (user && room.host === user.name) {
+          if (room.host === user.name) {
             hostedRoom = roomDetails;
-          }
-          
-          if (!roomDetails.isPrivate && room.host !== user?.name) {
+          } else if (!roomDetails.isPrivate) {
             loadedRooms.push(roomDetails);
           }
         });
@@ -146,7 +144,8 @@ export default function LobbyPage() {
                                 <CardTitle className="text-2xl text-white drop-shadow-lg">{userHostedRoom.name}</CardTitle>
                                 <CardDescription className="text-gray-300 flex items-center gap-2">
                                      <Users className="w-4 h-4" />
-                                     <span style={{ direction: 'ltr' }}>{userHostedRoom.memberCount}</span> {userHostedRoom.memberCount !== 1 ? 'أعضاء' : 'عضو'}
+                                     <span style={{ direction: 'ltr' }}>{userHostedRoom.memberCount > 0 ? userHostedRoom.memberCount : ''}</span> 
+                                     {userHostedRoom.memberCount > 0 ? (userHostedRoom.memberCount !== 1 ? 'أعضاء' : 'عضو') : 'فارغة'}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="p-0 mt-4">
@@ -226,7 +225,9 @@ export default function LobbyPage() {
                                     >
                                         <div className="flex items-center gap-4 text-accent">
                                             <Signal className="h-5 w-5" />
-                                            <span style={{ direction: 'ltr' }} className="font-bold text-lg">{room.memberCount}</span>
+                                            {room.memberCount > 0 && (
+                                                <span style={{ direction: 'ltr' }} className="font-bold text-lg">{room.memberCount}</span>
+                                            )}
                                         </div>
 
                                         <div className="flex items-center gap-3">
