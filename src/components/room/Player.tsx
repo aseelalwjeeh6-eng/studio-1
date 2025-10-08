@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Label } from '../ui/label';
+import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 
 
 interface PlayerProps {
@@ -21,6 +22,7 @@ interface PlayerProps {
   playerState: PlayerState | null;
   onPlayerStateChange: (newState: Partial<PlayerState>) => void;
   onVideoEnded: () => void;
+  videoDetails: YouTubeVideo | null;
 }
 
 type UrlType = 'youtube' | 'direct' | 'iframe' | 'empty';
@@ -75,7 +77,7 @@ function getYouTubeVideoId(url: string): string | null {
   return null;
 }
 
-const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, onPlayerStateChange, onVideoEnded }: PlayerProps) => {
+const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, onPlayerStateChange, onVideoEnded, videoDetails }: PlayerProps) => {
   const urlType = useMemo(() => getUrlType(videoUrl), [videoUrl]);
   const videoId = useMemo(() => (urlType === 'youtube' ? getYouTubeVideoId(videoUrl) : null), [videoUrl, urlType]);
 
@@ -89,10 +91,66 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
-  const [quality, setQuality] = useState('medium');
+  const [quality, setQuality] = useState('360p');
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
+
+  const togglePlay = useCallback(() => {
+    if (!canControl || !isPlayerReady.current) return;
+  
+    try {
+      if (urlType === 'youtube' && ytPlayerRef.current) {
+        const state = ytPlayerRef.current.getPlayerState();
+        if (state === 1) ytPlayerRef.current.pauseVideo();
+        else ytPlayerRef.current.playVideo();
+      } else if (urlType === 'direct' && htmlPlayerRef.current) {
+        if (htmlPlayerRef.current.paused) htmlPlayerRef.current.play().catch(console.error);
+        else htmlPlayerRef.current.pause();
+      }
+    } catch (e) {
+      console.warn("Could not toggle play", e);
+    }
+  }, [canControl, urlType]);
+
+  // --- Media Session API Integration ---
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      if (!videoDetails || urlType === 'empty') {
+        (navigator as any).mediaSession.metadata = null;
+        (navigator as any).mediaSession.setActionHandler('play', null);
+        (navigator as any).mediaSession.setActionHandler('pause', null);
+        (navigator as any).mediaSession.playbackState = "none";
+        return;
+      }
+      
+      const metadata = {
+        title: videoDetails.snippet.title,
+        artist: videoDetails.snippet.channelTitle,
+        album: 'اصيل سينما',
+        artwork: [
+          { src: videoDetails.snippet.thumbnails.default.url, sizes: '120x90', type: 'image/jpeg' },
+          { src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' },
+          { src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' },
+        ]
+      };
+      (navigator as any).mediaSession.metadata = new MediaMetadata(metadata);
+      
+      (navigator as any).mediaSession.setActionHandler('play', () => {
+        if(canControl) togglePlay();
+      });
+      (navigator as any).mediaSession.setActionHandler('pause', () => {
+        if(canControl) togglePlay();
+      });
+      
+    }
+  }, [videoDetails, canControl, togglePlay, urlType]);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+        (navigator as any).mediaSession.playbackState = playerState?.isPlaying ? "playing" : "paused";
+    }
+  }, [playerState?.isPlaying]);
 
 
   // --- Generic Player Control ---
@@ -214,23 +272,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
     }
   }, [playerState, duration]);
-
-  const togglePlay = useCallback(() => {
-    if (!canControl || !isPlayerReady.current) return;
-  
-    try {
-      if (urlType === 'youtube' && ytPlayerRef.current) {
-        const state = ytPlayerRef.current.getPlayerState();
-        if (state === 1) ytPlayerRef.current.pauseVideo();
-        else ytPlayerRef.current.playVideo();
-      } else if (urlType === 'direct' && htmlPlayerRef.current) {
-        if (htmlPlayerRef.current.paused) htmlPlayerRef.current.play().catch(console.error);
-        else htmlPlayerRef.current.pause();
-      }
-    } catch (e) {
-      console.warn("Could not toggle play", e);
-    }
-  }, [canControl, urlType]);
 
   const seek = useCallback((amount: number) => {
     if (!canControl || !isPlayerReady.current || !duration) return;

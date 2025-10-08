@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ListMusic, Play, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 
 export interface PlaylistItem {
   id: string;

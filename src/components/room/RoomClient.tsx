@@ -181,6 +181,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
+  const [currentVideoDetails, setCurrentVideoDetails] = useState<YouTubeVideo | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [hostName, setHostName] = useState('');
@@ -316,6 +317,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         
         const videoUrlRef = ref(database, `rooms/${roomId}/videoUrl`);
         listeners.push(onValue(videoUrlRef, (snapshot) => setVideoUrl(snapshot.val() || '')));
+        
+        const currentVideoDetailsRef = ref(database, `rooms/${roomId}/currentVideoDetails`);
+        listeners.push(onValue(currentVideoDetailsRef, (snapshot) => setCurrentVideoDetails(snapshot.val() || null)));
         
         const roomNameRef = ref(database, `rooms/${roomId}/name`);
         listeners.push(onValue(roomNameRef, (snapshot) => {
@@ -454,18 +458,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       performSearch(query);
   };
   
-  const onSetVideo = useCallback((videoIdentifier: string, startTime = 0) => {
+  const onSetVideo = useCallback((videoIdentifier: string, startTime = 0, videoDetails?: YouTubeVideo) => {
     if (canControl) {
-      const videoUrlRef = ref(database, `rooms/${roomId}/videoUrl`);
-      const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-      
-      set(videoUrlRef, videoIdentifier);
-      set(playerStateRef, { 
+      const updates: { [key: string]: any } = {};
+      updates[`/rooms/${roomId}/videoUrl`] = videoIdentifier;
+      updates[`/rooms/${roomId}/currentVideoDetails`] = videoDetails || null;
+      updates[`/rooms/${roomId}/playerState`] = { 
         isPlaying: !!videoIdentifier, 
         seekTime: startTime, 
         timestamp: serverTimestamp(),
         volume: playerState?.volume ?? 0.8,
-      });
+      };
+      
+      update(ref(database), updates);
     }
   }, [canControl, roomId, playerState?.volume]);
   
@@ -495,7 +500,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const handleSetVideoFromPreview = () => {
     if (previewPlayerRef.current && previewVideo) {
       const currentTime = previewPlayerRef.current.getCurrentTime();
-      onSetVideo(previewVideo.id.videoId, currentTime);
+      onSetVideo(previewVideo.id.videoId, currentTime, previewVideo);
       setPreviewVideo(null); // Close preview dialog
     }
   };
@@ -564,8 +569,16 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     setUrlInput('');
   };
 
-  const handlePlayFromPlaylist = (videoId: string) => {
-    onSetVideo(videoId);
+  const handlePlayFromPlaylist = async (videoId: string) => {
+    try {
+        const results = await searchYoutube({ query: videoId });
+        const videoDetails = results.items.find(item => item.id.videoId === videoId);
+        onSetVideo(videoId, 0, videoDetails);
+    } catch(e) {
+        console.error("Failed to fetch video details for playlist item", e);
+        // Play without details if search fails
+        onSetVideo(videoId);
+    }
     setIsPlaylistOpen(false);
   };
 
@@ -601,7 +614,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     if (playlist.length > 0) {
         const nextIndex = (currentIndex + 1);
         if (nextIndex < playlist.length) {
-            onSetVideo(playlist[nextIndex].videoId);
+            handlePlayFromPlaylist(playlist[nextIndex].videoId);
         } else {
             onSetVideo('');
         }
@@ -820,6 +833,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   playerState={playerState}
                                   onPlayerStateChange={handlePlayerStateChange}
                                   onVideoEnded={handleVideoEnded}
+                                  videoDetails={currentVideoDetails}
                               />
                           </div>
                           <div className="flex-shrink-0">
