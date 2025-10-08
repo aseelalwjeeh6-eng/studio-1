@@ -7,6 +7,7 @@ import { AppProviders } from '@/app/providers';
 import Hearts from '@/components/shared/Hearts';
 import Script from 'next/script';
 import { HeartIcon } from '@/components/icons/HeartIcon';
+import Image from 'next/image';
 
 const alegreya = Alegreya({
   subsets: ['latin'],
@@ -34,13 +35,16 @@ export default function RootLayout({
       <body className={cn('font-body antialiased', alegreya.className)}>
         <Script id="suppress-datachannel-error" strategy="beforeInteractive">
           {`
-            const originalConsoleError = console.error;
-            console.error = (...args) => {
-              if (typeof args[0] === 'string' && args[0].includes('Unknown DataChannel error')) {
-                return;
-              }
-              originalConsoleError(...args);
-            };
+            if (typeof window !== 'undefined') {
+              const originalConsoleError = console.error;
+              console.error = (...args) => {
+                const errorString = args.join(' ');
+                if (errorString.includes('Unknown DataChannel error')) {
+                  return;
+                }
+                originalConsoleError(...args);
+              };
+            }
           `}
         </Script>
         <AppProviders>
