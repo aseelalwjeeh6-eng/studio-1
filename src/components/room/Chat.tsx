@@ -61,7 +61,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
 
     return (
         <ScrollArea className="h-full w-full" viewportRef={viewportRef}>
-            <div className="p-2 md:p-4 space-y-3">
+            <div className="p-2 md:p-4 space-y-3 flex flex-col">
                 {messages.map((msg) => {
                     const isCurrentUser = msg.sender === user.name;
                     if (msg.isSystemMessage) {
@@ -72,7 +72,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className="flex flex-col items-start">
+                        <div key={msg.id} className="flex flex-col items-start self-end">
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "max-w-xs p-2 md:p-3 rounded-xl break-words",
@@ -90,7 +90,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onBlur, inputRef }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; onFocus: () => void; onBlur: () => void; inputRef: React.RefObject<HTMLInputElement> }) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement> }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -110,7 +110,7 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onB
             };
             await set(newMsgRef, messageData);
             setNewMessage('');
-            inputRef.current?.blur(); // This will trigger onBlur and exit the "full-screen" mode
+            inputRef.current?.blur();
         } catch(error) {
             console.error("Error sending message:", error);
         } finally {
@@ -134,8 +134,6 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onB
                     onChange={(e) => setNewMessage(e.target.value)}
                     className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
                     disabled={isSending}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
                 />
                 <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
                     <Send className="h-4 w-4" />
