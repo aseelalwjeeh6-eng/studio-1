@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -68,13 +69,14 @@ export default function LobbyPage() {
             hostedRoom = roomDetails;
           }
           
-          if (!roomDetails.isPrivate) {
+          // Only show public rooms that are not hosted by the current user
+          if (!roomDetails.isPrivate && room.host !== user?.name) {
             loadedRooms.push(roomDetails);
           }
         });
       }
       
-      setActiveRooms(loadedRooms.filter(r => r.host !== user?.name));
+      setActiveRooms(loadedRooms);
       setUserHostedRoom(hostedRoom);
       setIsLoadingHostedRoom(false);
     });
@@ -131,7 +133,7 @@ export default function LobbyPage() {
                         <Loader2 className="h-10 w-10 animate-spin text-accent" />
                     </Card>
                 ) : userHostedRoom ? (
-                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20 group relative overflow-hidden">
+                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20 group relative overflow-hidden h-[220px]">
                          <Image 
                             src={userHostedRoom.backgroundUrl || userHostedRoom.avatarUrl || PlaceHolderImages.find(p => p.id === 'room-bg-1')?.imageUrl || ''}
                             alt={userHostedRoom.name || ''}
@@ -156,7 +158,7 @@ export default function LobbyPage() {
                         </div>
                     </Card>
                 ) : (
-                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20">
+                    <Card className="bg-card/50 backdrop-blur-lg border-accent/20 h-[220px] flex flex-col justify-center">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <PlusCircle className="text-accent" />
