@@ -52,6 +52,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'www2.0zz0.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 };

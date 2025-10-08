@@ -74,231 +74,45 @@
     },
     {
       "id": "room-bg-1",
-      "description": "Romantic night with city lights",
-      "imageUrl": "https://images.unsplash.com/photo-1531218150217-54595bc2b634?w=1920&h=1080&fit=crop",
-      "imageHint": "night city"
+      "description": "New Background 1",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/283026394.jpg",
+      "imageHint": "night sky"
     },
     {
       "id": "room-bg-2",
-      "description": "Cozy room with neon heart",
-      "imageUrl": "https://images.unsplash.com/photo-1581333100643-b0928dbaf342?w=1920&h=1080&fit=crop",
-      "imageHint": "neon heart"
+      "description": "New Background 2",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/126988533.jpg",
+      "imageHint": "dark alley"
     },
     {
       "id": "room-bg-3",
-      "description": "Starry night sky over mountains",
-      "imageUrl": "https://images.unsplash.com/photo-1464802686167-b939a6910659?w=1920&h=1080&fit=crop",
-      "imageHint": "starry night"
+      "description": "New Background 3",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/119227575.jpg",
+      "imageHint": "couple anime"
     },
     {
       "id": "room-bg-4",
-      "description": "Balcony view of a city at night",
-      "imageUrl": "https://images.unsplash.com/photo-1504219438097-9a1f107b5a1a?w=1920&h=1080&fit=crop",
-      "imageHint": "night balcony"
+      "description": "New Background 4",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/618241930.jpg",
+      "imageHint": "city night"
     },
     {
       "id": "room-bg-5",
-      "description": "Rainy night on a city street",
-      "imageUrl": "https://images.unsplash.com/photo-1495429828552-a52d3f864858?w=1920&h=1080&fit=crop",
-      "imageHint": "rainy night"
+      "description": "New Background 5",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/409216609.jpg",
+      "imageHint": "rainy window"
     },
     {
       "id": "room-bg-6",
-      "description": "Full moon in a dark sky",
-      "imageUrl": "https://images.unsplash.com/photo-1532767153582-b1a0e5145009?w=1920&h=1080&fit=crop",
-      "imageHint": "full moon"
+      "description": "New Background 6",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/147815412.jpg",
+      "imageHint": "cat silhouette"
     },
     {
-      "id": "user-bg-1",
-      "description": "Couple silhouette with pink background",
-      "imageUrl": "https://i.ibb.co/dM4XjFm/bg1.png",
-      "imageHint": "couple silhouette"
-    },
-    {
-      "id": "user-bg-2",
-      "description": "Couple under an umbrella in the rain",
-      "imageUrl": "https://i.ibb.co/VvZcWjD/bg2.png",
-      "imageHint": "couple rain"
-    },
-    {
-      "id": "user-bg-3",
-      "description": "Couple with heart balloons in a car",
-      "imageUrl": "https://i.ibb.co/fHnN2wW/bg3.png",
-      "imageHint": "couple car"
-    },
-    {
-      "id": "user-bg-4",
-      "description": "Couple kissing with bokeh lights",
-      "imageUrl": "https://i.ibb.co/gP4zGz2/bg4.png",
-      "imageHint": "couple kissing"
-    },
-    {
-      "id": "user-bg-5",
-      "description": "Couple looking at each other",
-      "imageUrl": "https://i.ibb.co/L05JDWw/bg5.png",
-      "imageHint": "couple romantic"
-    },
-    {
-      "id": "user-bg-6",
-      "description": "Animated couple at night with moon",
-      "imageUrl": "https://i.ibb.co/2nLwSjV/bg6.png",
-      "imageHint": "animated couple"
-    },
-    {
-      "id": "user-bg-7",
-      "description": "Couple hugging with red background",
-      "imageUrl": "https://i.ibb.co/mHk9zD3/bg7.png",
-      "imageHint": "couple hugging"
-    },
-    {
-      "id": "bg1",
-      "description": "Romantic background with candles",
-      "imageUrl": "https://images.unsplash.com/photo-1597053530944-a5c86c3f3505?w=1920&h=1080&fit=crop",
-      "imageHint": "romantic candles"
-    },
-    {
-      "id": "bg2",
-      "description": "Romantic background with roses",
-      "imageUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1920&h=1080&fit=crop",
-      "imageHint": "romantic roses"
-    },
-    {
-      "id": "bg3",
-      "description": "Romantic background with heart shapes",
-      "imageUrl": "https://images.unsplash.com/photo-1581404134892-3834570342a3?w=1920&h=1080&fit=crop",
-      "imageHint": "romantic hearts"
-    },
-    {
-      "id": "bg4",
-      "description": "Couple holding hands",
-      "imageUrl": "https://images.unsplash.com/photo-1458210452331-cad0383344d6?w=1920&h=1080&fit=crop",
-      "imageHint": "couple hands"
-    },
-    {
-      "id": "bg5",
-      "description": "A placeholder for a movie poster",
-      "imageUrl": "https://images.unsplash.com/photo-1511875762315-c773eb98eec0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHxtb3ZpZSUyMHBvc3RlcnxlbnwwfHx8fDE3NTg4ODkwNzB8MA&ixlib=rb-4.1.0&q=80&w=1080",
-      "imageHint": "movie poster"
-    },
-    {
-      "id": "bg6",
-      "description": "Couple silhouette at sunset",
-      "imageUrl": "https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=1920&h=1080&fit=crop",
-      "imageHint": "couple sunset"
-    },
-    {
-      "id": "bg7",
-      "description": "Fairy lights in a jar",
-      "imageUrl": "https://images.unsplash.com/photo-1483366774565-c783b9f70e2c?w=1920&h=1080&fit=crop",
-      "imageHint": "fairy lights"
-    },
-    {
-      "id": "bg8",
-      "description": "Path with lanterns at night",
-      "imageUrl": "https://images.unsplash.com/photo-1531318432145-6c5b8a53add3?w=1920&h=1080&fit=crop",
-      "imageHint": "night lanterns"
-    },
-    {
-      "id": "bg9",
-      "description": "Two cups of coffee with a heart shape",
-      "imageUrl": "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=1920&h=1080&fit=crop",
-      "imageHint": "love coffee"
-    },
-    {
-      "id": "bg10",
-      "description": "A book with heart-shaped pages",
-      "imageUrl": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=1920&h=1080&fit=crop",
-      "imageHint": "love book"
-    },
-    {
-      "id": "bg11",
-      "description": "A calm lake at sunrise",
-      "imageUrl": "https://images.unsplash.com/photo-1502957298391-f2245b5107e0?w=1920&h=1080&fit=crop",
-      "imageHint": "calm lake"
-    },
-    {
-      "id": "bg12",
-      "description": "Candles and flowers on a table",
-      "imageUrl": "https://images.unsplash.com/photo-1561501900-3701fa6a0864?w=1920&h=1080&fit=crop",
-      "imageHint": "romantic dinner"
-    },
-    {
-      "id": "bg13",
-      "description": "Starry night sky over a forest",
-      "imageUrl": "https://images.unsplash.com/photo-1483728642387-6c351b4d1cb1?w=1920&h=1080&fit=crop",
-      "imageHint": "starry night"
-    },
-    {
-      "id": "bg14",
-      "description": "A cozy fireplace",
-      "imageUrl": "https://images.unsplash.com/photo-1549499839-8784b817b35f?w=1920&h=1080&fit=crop",
-      "imageHint": "cozy fireplace"
-    },
-    {
-      "id": "bg15",
-      "description": "Red rose petals",
-      "imageUrl": "https://images.unsplash.com/photo-1559563459-7a7157b1b659?w=1920&h=1080&fit=crop",
-      "imageHint": "rose petals"
-    },
-    {
-      "id": "bg16",
-      "description": "Red light room",
-      "imageUrl": "https://images.unsplash.com/photo-1620394028399-5910a51403ae?w=1920&h=1080&fit=crop",
-      "imageHint": "red light"
-    },
-    {
-      "id": "bg17",
-      "description": "Romantic birthday cake with candles",
-      "imageUrl": "https://images.unsplash.com/photo-1586985289993-e5b3b1364547?w=1920&h=1080&fit=crop",
-      "imageHint": "birthday cake"
-    },
-    {
-      "id": "bg18",
-      "description": "Dinner table with candles",
-      "imageUrl": "https://images.unsplash.com/photo-1580662688482-40f428c03741?w=1920&h=1080&fit=crop",
-      "imageHint": "candlelight dinner"
-    },
-    {
-      "id": "bg19",
-      "description": "Bouquet of red roses",
-      "imageUrl": "https://images.unsplash.com/photo-1568557434978-57102b54c87c?w=1920&h=1080&fit=crop",
-      "imageHint": "red roses"
-    },
-    {
-      "id": "bg20",
-      "description": "Romantic party with balloons",
-      "imageUrl": "https://images.unsplash.com/photo-1562441999-0140f7d5d713?w=1920&h=1080&fit=crop",
-      "imageHint": "romantic party"
-    },
-    {
-      "id": "bg21",
-      "description": "Cozy room with red and blue lights",
-      "imageUrl": "https://images.unsplash.com/photo-1598289431512-b970d496d5b7?w=1920&h=1080&fit=crop",
-      "imageHint": "neon lights"
-    },
-    {
-      "id": "bg22",
-      "description": "Heart shaped sparklers",
-      "imageUrl": "https://images.unsplash.com/photo-1513299719323-87a4005e838f?w=1920&h=1080&fit=crop",
-      "imageHint": "heart sparklers"
-    },
-    {
-      "id": "bg23",
-      "description": "A single red rose",
-      "imageUrl": "https://images.unsplash.com/photo-1534966249583-c24c73b062b9?w=1920&h=1080&fit=crop",
-      "imageHint": "red rose"
-    },
-    {
-      "id": "bg24",
-      "description": "Romantic table setup outdoors",
-      "imageUrl": "https://images.unsplash.com/photo-1594488544497-a1a74d28c240?w=1920&h=1080&fit=crop",
-      "imageHint": "outdoor dinner"
-    },
-    {
-      "id": "bg25",
-      "description": "Many candles in a dark room",
-      "imageUrl": "https://images.unsplash.com/photo-1582772036928-c11a0c0050c7?w=1920&h=1080&fit=crop",
-      "imageHint": "many candles"
+      "id": "room-bg-7",
+      "description": "New Background 7",
+      "imageUrl": "https://www2.0zz0.com/2025/10/08/14/747252587.jpg",
+      "imageHint": "night city"
     }
   ]
 }
