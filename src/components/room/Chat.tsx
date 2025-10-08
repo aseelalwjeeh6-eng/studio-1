@@ -72,7 +72,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className="flex flex-col items-start self-end">
+                        <div key={msg.id} className="flex flex-col items-start self-start">
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "max-w-xs p-2 md:p-3 rounded-xl break-words",
