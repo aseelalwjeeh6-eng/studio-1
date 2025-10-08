@@ -825,7 +825,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                            </div>
                            <div className="bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
                              <ChatHeader isHost={isHost} roomId={roomId} />
-                             <div className="h-64 md:h-96">
+                             <div className="h-56 md:h-80">
                                <ChatMessages roomId={roomId} user={user} />
                              </div>
                            </div>
