@@ -11,36 +11,47 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-// Store the prompt event in a global variable to persist across component mounts/unmounts
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
+const DISMISS_KEY = 'pwaInstallDismissedTimestamp';
+const TWENTY_FOUR_HOURS_IN_MS = 24 * 60 * 60 * 1000;
 
 export const usePWAInstall = () => {
   const [canInstall, setCanInstall] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       deferredPrompt = event as BeforeInstallPromptEvent;
-      // Use localStorage to persist the ability to show the prompt
-      localStorage.setItem('canInstallPWA', 'true');
       setCanInstall(true);
-      console.log('beforeinstallprompt event fired and captured.');
+      
+      const dismissedTimestamp = localStorage.getItem(DISMISS_KEY);
+      if (dismissedTimestamp) {
+        const timeSinceDismiss = Date.now() - parseInt(dismissedTimestamp, 10);
+        if (timeSinceDismiss > TWENTY_FOUR_HOURS_IN_MS) {
+          setShowInstallPrompt(true);
+        } else {
+          setShowInstallPrompt(false);
+        }
+      } else {
+        setShowInstallPrompt(true);
+      }
     };
 
     const handleAppInstalled = () => {
-      console.log('PWA was installed');
       deferredPrompt = null;
-      localStorage.removeItem('canInstallPWA');
       setCanInstall(false);
+      setShowInstallPrompt(false);
+      localStorage.removeItem(DISMISS_KEY);
     };
     
-    // Check localStorage on initial load
-    if (localStorage.getItem('canInstallPWA') === 'true' && deferredPrompt) {
-        setCanInstall(true);
-    }
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+
+    // Initial check in case the event was already fired and captured
+    if (deferredPrompt) {
+       handleBeforeInstallPrompt(deferredPrompt);
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -59,12 +70,18 @@ export const usePWAInstall = () => {
     
     if (outcome === 'accepted') {
       console.log('User accepted the install prompt');
-      // The 'appinstalled' event will handle cleanup
+      // The 'appinstalled' event will handle hiding the banner.
     } else {
       console.log('User dismissed the install prompt');
-      // Keep canInstall true so the user can try again later
+      // If the user dismisses the native prompt, we should also treat it as a dismissal.
+      dismissInstallPrompt();
     }
   }, []);
 
-  return { canInstall, installPWA };
+  const dismissInstallPrompt = useCallback(() => {
+    localStorage.setItem(DISMISS_KEY, Date.now().toString());
+    setShowInstallPrompt(false);
+  }, []);
+
+  return { showInstallPrompt, installPWA, dismissInstallPrompt };
 };

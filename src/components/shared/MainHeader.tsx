@@ -15,13 +15,13 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import useUserSession from '@/hooks/use-user-session';
-import { usePWAInstall } from '@/hooks/use-pwa-install';
-import { ArrowDownToLine, Bell, Users, Mail, UserPlus, UserCheck, UserX, LogIn } from 'lucide-react';
+import { Bell, Users, Mail, UserPlus, UserCheck, UserX, LogIn } from 'lucide-react';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, remove, update } from 'firebase/database';
 import { FriendRequest, RoomInvitation, acceptFriendRequest, rejectFriendRequest } from '@/lib/firebase-service';
 import { Badge } from '../ui/badge';
 import Image from 'next/image';
+import { PwaInstallBanner } from './PwaInstallBanner';
 
 
 // Inlined SVG components to avoid lucide-react HMR issues
@@ -108,7 +108,6 @@ export function MainHeader() {
   const { user, setUser } = useUserSession();
   const pathname = usePathname();
   const router = useRouter();
-  const { canInstall, installPWA } = usePWAInstall();
 
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [invitations, setInvitations] = useState<RoomInvitation[]>([]);
@@ -221,18 +220,6 @@ export function MainHeader() {
         </nav>
 
         <div className="flex items-center gap-3">
-          {canInstall && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={installPWA}
-              className="rounded-full"
-              aria-label="تثبيت التطبيق"
-            >
-              <ArrowDownToLine className="h-5 w-5" />
-            </Button>
-          )}
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
@@ -332,6 +319,7 @@ export function MainHeader() {
           </Button>
         </div>
       </div>
+      <PwaInstallBanner />
     </header>
   );
 }
