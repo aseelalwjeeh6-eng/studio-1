@@ -11,36 +11,40 @@ export const BackButtonExitGuard = () => {
 
     useEffect(() => {
         const handlePopState = (event: PopStateEvent) => {
-            // Only apply this logic on the root/login page
-            if (pathname === '/') {
-                event.preventDefault();
+            // Prevent the default back behavior
+            event.preventDefault();
 
-                clickCount.current += 1;
+            // Always push a new state to "catch" the next back button press
+            window.history.pushState(null, '', window.location.href);
 
-                if (resetTimeout.current) {
-                    clearTimeout(resetTimeout.current);
-                }
+            // If it's not the root page, just navigate back normally
+            // This allows back navigation within the app (e.g., from profile to lobby)
+            if (pathname !== '/lobby' && pathname !== '/') {
+                 router.back();
+                 return;
+            }
 
-                if (clickCount.current >= 3) {
-                    // Allow the native back action to proceed, which might exit the PWA
-                    window.history.back();
-                } else {
-                     console.log(`اضغط ${3 - clickCount.current} مرات أخرى للخروج`);
-                     
-                     // Push a state to "catch" the back button press
-                     window.history.pushState(null, '', window.location.href);
+            // If on lobby or login page, handle exit logic
+            clickCount.current += 1;
 
-                    resetTimeout.current = setTimeout(() => {
-                        clickCount.current = 0;
-                    }, 2000);
-                }
+            if (resetTimeout.current) {
+                clearTimeout(resetTimeout.current);
+            }
+
+            if (clickCount.current >= 3) {
+                // Allow the native back action to proceed, which might exit the PWA
+                window.history.back();
             } else {
-                 // For other pages, allow normal back navigation
-                router.back();
+                 console.log(`اضغط ${3 - clickCount.current} مرات أخرى للخروج`);
+                 
+                resetTimeout.current = setTimeout(() => {
+                    clickCount.current = 0;
+                }, 2000);
             }
         };
 
-        // On initial load, push a state so the first back button press is caught
+        // On initial load, and on every route change, push a state
+        // so the first back button press is always caught.
         window.history.pushState(null, '', window.location.href);
         
         window.addEventListener('popstate', handlePopState);

@@ -175,7 +175,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -727,36 +726,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const FloatingPlayerView = () => (
-    <div className="fixed top-2 left-2 right-2 z-30 flex flex-col gap-2 rounded-lg bg-black/50 p-2 backdrop-blur-sm shadow-lg">
-      <Player 
-          videoUrl={videoUrl} 
-          onSetVideo={onSetVideo} 
-          canControl={false} // Floating view is read-only
-          onSearchClick={() => {}}
-          playerState={playerState}
-          onPlayerStateChange={() => {}}
-          onVideoEnded={() => {}}
-      />
-      <Seats 
-          seatedMembers={seatedMembers}
-          hostName={hostName}
-          moderators={moderators}
-          onTakeSeat={() => {}}
-          onLeaveSeat={() => {}}
-          currentUser={user}
-          isHost={isHost}
-          onKickUser={() => {}}
-          onPromote={() => {}}
-          onDemote={() => {}}
-          onTransferHost={() => {}}
-          room={room}
-          currentUserFriends={friendData.friends}
-          currentUserRequests={friendData.requests}
-      />
-    </div>
-  );
-
   if (!isAuthenticated) {
     return (
         <Dialog open={!isAuthenticated} onOpenChange={(open) => { if(!open) router.push('/lobby')}}>
@@ -779,7 +748,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-background relative">
+    <div className="relative flex flex-col w-full bg-background" style={{ height: '100dvh' }}>
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -791,8 +760,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-
-        {isMobile && isKeyboardVisible && <FloatingPlayerView />}
 
         <div className="relative z-10 flex h-full w-full flex-col">
              <RoomHeader 
@@ -811,15 +778,15 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="w-full flex-1 flex flex-col min-h-0 pb-20">
-              <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 h-full">
+            <main className="w-full flex-1 flex flex-col min-h-0">
+              <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
                        <VideoConference />
                      </div>
                   ) : (
                       <>
-                          <div className={cn("flex-shrink-0 transition-opacity duration-300", isMobile && isKeyboardVisible && 'opacity-0 pointer-events-none')}>
+                          <div className="flex-shrink-0">
                               <Player 
                                   videoUrl={videoUrl} 
                                   onSetVideo={onSetVideo} 
@@ -830,7 +797,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   onVideoEnded={handleVideoEnded}
                               />
                           </div>
-                          <div className={cn("flex-shrink-0 transition-opacity duration-300", isMobile && isKeyboardVisible && 'opacity-0 pointer-events-none')}>
+                          <div className="flex-shrink-0">
                                <Seats 
                                   seatedMembers={seatedMembers}
                                   hostName={hostName}
@@ -861,11 +828,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
             {/* Chat Input Area */}
-            <footer 
-              className="fixed bottom-0 left-0 right-0 z-20"
-              onFocus={() => setIsKeyboardVisible(true)}
-              onBlur={() => setIsKeyboardVisible(false)}
-            >
+            <footer className="relative z-20 flex-shrink-0">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
