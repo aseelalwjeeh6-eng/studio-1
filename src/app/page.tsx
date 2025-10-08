@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { HeartIcon } from '@/components/icons/HeartIcon';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -219,8 +218,15 @@ export default function LoginPage() {
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm bg-card/50 backdrop-blur-lg border-accent/20">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4">
-            <HeartIcon className="h-20 w-20 text-accent" />
+          <div className="mx-auto mb-4 flex items-center justify-center">
+            <Image
+                src="https://i.ibb.co/TM85sVxb/1759933466523.jpg"
+                alt="اصيل سينما Logo"
+                width={80}
+                height={80}
+                className="h-20 w-20"
+                priority
+            />
           </div>
           <CardTitle className="font-headline text-4xl text-foreground">اصيل سينما</CardTitle>
           <CardDescription className="text-muted-foreground text-lg">

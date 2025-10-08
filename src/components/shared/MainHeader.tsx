@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useState, useEffect } from 'react';
-import { HeartIcon } from '@/components/icons/HeartIcon';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -22,6 +21,7 @@ import { database } from '@/lib/firebase';
 import { ref, onValue, off, remove, update } from 'firebase/database';
 import { FriendRequest, RoomInvitation, acceptFriendRequest, rejectFriendRequest } from '@/lib/firebase-service';
 import { Badge } from '../ui/badge';
+import Image from 'next/image';
 
 
 // Inlined SVG components to avoid lucide-react HMR issues
@@ -197,7 +197,14 @@ export function MainHeader() {
           className="flex items-center gap-2"
           aria-label="Home"
         >
-          <HeartIcon className="h-10 w-10 text-accent" />
+           <Image
+            src="https://i.ibb.co/TM85sVxb/1759933466523.jpg"
+            alt="اصيل سينما Logo"
+            width={40}
+            height={40}
+            className="h-10 w-10"
+            priority
+          />
           <span className="hidden sm:inline-block font-headline text-2xl font-bold text-foreground">
             اصيل سينما
           </span>

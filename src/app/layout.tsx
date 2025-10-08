@@ -26,7 +26,8 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
-        <link rel="apple-touch-icon" href="/icon-192x192.png"></link>
+        <link rel="icon" href="https://i.ibb.co/TM85sVxb/1759933466523.jpg" />
+        <link rel="apple-touch-icon" href="https://i.ibb.co/TM85sVxb/1759933466523.jpg"></link>
         <meta name="theme-color" content="#26000A" />
       </head>
       <body className={cn('font-body antialiased', alegreya.className)}>
