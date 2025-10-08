@@ -30,6 +30,7 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Switch } from '../ui/switch';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
 
@@ -152,6 +153,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
 
 const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
+  const isMobile = useIsMobile();
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
@@ -173,6 +175,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -447,12 +450,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     if (!canControl) return;
     const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
     
-    // Use a transaction to prevent race conditions from multiple state change events
     runTransaction(playerStateRef, (currentState: PlayerState | null) => {
         const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, timestamp: Date.now() };
 
-        // Determine if we need to update the timestamp. Only update on major changes like
-        // play/pause or a definitive seek, not on every small update.
         const shouldUpdateTimestamp = (newState.isPlaying !== undefined && newState.isPlaying !== current.isPlaying) || newState.seekTime !== undefined;
 
         const updatedState = { 
@@ -461,10 +461,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         };
 
         if (shouldUpdateTimestamp) {
-            // Using serverTimestamp() ensures all clients get a consistent time.
             return { ...updatedState, timestamp: serverTimestamp() };
         } else {
-            // If just volume is changing, no need to update timestamp
             return updatedState;
         }
     });
@@ -518,7 +516,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 : parsedUrl.searchParams.get('v');
             
             if (videoId) {
-                // Try to fetch title from youtube
                 try {
                     const response = await fetch(`https://noembed.com/json?url=${encodeURIComponent(url)}`);
                     const data = await response.json();
@@ -583,7 +580,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         if (nextIndex < playlist.length) {
             onSetVideo(playlist[nextIndex].videoId);
         } else {
-            // Last video in playlist ended
             onSetVideo('');
         }
     } else {
@@ -686,7 +682,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       if (!isHost || !userName) return;
       const updates: { [key: string]: any } = {};
       updates[`/rooms/${roomId}/host`] = userName;
-      // Also make the old host a moderator
       const newModerators = [...moderators.filter(m => m !== userName), hostName];
       updates[`/rooms/${roomId}/moderators`] = newModerators;
 
@@ -732,6 +727,36 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const FloatingPlayerView = () => (
+    <div className="fixed top-2 left-2 right-2 z-30 flex flex-col gap-2 rounded-lg bg-black/50 p-2 backdrop-blur-sm shadow-lg">
+      <Player 
+          videoUrl={videoUrl} 
+          onSetVideo={onSetVideo} 
+          canControl={false} // Floating view is read-only
+          onSearchClick={() => {}}
+          playerState={playerState}
+          onPlayerStateChange={() => {}}
+          onVideoEnded={() => {}}
+      />
+      <Seats 
+          seatedMembers={seatedMembers}
+          hostName={hostName}
+          moderators={moderators}
+          onTakeSeat={() => {}}
+          onLeaveSeat={() => {}}
+          currentUser={user}
+          isHost={isHost}
+          onKickUser={() => {}}
+          onPromote={() => {}}
+          onDemote={() => {}}
+          onTransferHost={() => {}}
+          room={room}
+          currentUserFriends={friendData.friends}
+          currentUserRequests={friendData.requests}
+      />
+    </div>
+  );
+
   if (!isAuthenticated) {
     return (
         <Dialog open={!isAuthenticated} onOpenChange={(open) => { if(!open) router.push('/lobby')}}>
@@ -754,7 +779,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-background relative">
+    <div className="flex flex-col h-screen w-full bg-background relative overflow-hidden">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -766,6 +791,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
+
+        {isMobile && isKeyboardVisible && <FloatingPlayerView />}
+
         <div className="relative z-10 flex h-full w-full flex-col">
              <RoomHeader 
                 onSearchClick={() => setIsSearchOpen(true)} 
@@ -783,15 +811,15 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="w-full flex-1 overflow-y-auto min-h-0 pb-24">
-              <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 pb-4">
+            <main className="w-full flex-1 min-h-0 pb-20">
+              <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 h-full">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
                        <VideoConference />
                      </div>
                   ) : (
                       <>
-                          <div className="flex-shrink-0">
+                          <div className={cn("flex-shrink-0 transition-opacity duration-300", isMobile && isKeyboardVisible && 'opacity-0 pointer-events-none')}>
                               <Player 
                                   videoUrl={videoUrl} 
                                   onSetVideo={onSetVideo} 
@@ -802,7 +830,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   onVideoEnded={handleVideoEnded}
                               />
                           </div>
-                          <div className="flex-shrink-0">
+                          <div className={cn("flex-shrink-0 transition-opacity duration-300", isMobile && isKeyboardVisible && 'opacity-0 pointer-events-none')}>
                                <Seats 
                                   seatedMembers={seatedMembers}
                                   hostName={hostName}
@@ -820,12 +848,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   currentUserRequests={friendData.requests}
                               />
                           </div>
-                           <div className="flex-shrink-0">
-                              <ViewerInfo members={viewers} />
-                           </div>
-                           <div className="bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
+                          <div className="flex-grow flex flex-col bg-card/50 backdrop-blur-lg rounded-t-lg min-h-0">
                              <ChatHeader isHost={isHost} roomId={roomId} />
-                             <div className="h-56 md:h-80">
+                             <div className="flex-grow min-h-0">
                                <ChatMessages roomId={roomId} user={user} />
                              </div>
                            </div>
@@ -836,7 +861,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
             {/* Chat Input Area */}
-            <footer className="fixed bottom-0 left-0 right-0 z-20">
+            <footer 
+              className="fixed bottom-0 left-0 right-0 z-20"
+              onFocus={() => setIsKeyboardVisible(true)}
+              onBlur={() => setIsKeyboardVisible(false)}
+            >
                  <ChatInput
                     roomId={roomId} 
                     user={user} 

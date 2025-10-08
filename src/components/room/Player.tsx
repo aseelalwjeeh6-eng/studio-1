@@ -168,14 +168,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
         const playerStatus = getStatus();
 
-        // Sync play/pause state
         if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
             play();
         } else if (!playerState.isPlaying && playerStatus === 1) {
             pause();
         }
 
-        // Sync seek time, accounting for latency
         const hostTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         const currentTime = getCurrentTime();
         
@@ -233,7 +231,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (htmlPlayerRef.current.paused) htmlPlayerRef.current.play().catch(console.error);
         else htmlPlayerRef.current.pause();
       }
-      // handleStateChange is called from onYtStateChange or onHtmlStateChange
     } catch (e) {
       console.warn("Could not toggle play", e);
     }
@@ -266,7 +263,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     isSeekingRef.current = true;
     
     try {
-        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, false); // `false` for preview seek
+        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, false);
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     } catch (e) {
         console.warn("Could not seek on slider change", e);
@@ -314,7 +311,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const clickSide = clickX < left + width / 3 ? 'left' : (clickX > left + width * 2 / 3 ? 'right' : 'center');
 
     if (now - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD && clickSide === lastClickSideRef.current) {
-      // Double click
       if (canControl) {
         if (clickSide === 'left') {
           seek(-5);
@@ -322,11 +318,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           seek(5);
         }
       }
-      // Reset after action
       lastClickTimeRef.current = 0;
       lastClickSideRef.current = null;
     } else {
-      // Single click
       lastClickTimeRef.current = now;
       lastClickSideRef.current = clickSide;
 
@@ -361,7 +355,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onYtStateChange = (event: { data: number }) => {
     if (!canControl || isSeekingRef.current) return;
     
-    // A seek action might momentarily trigger a PAUSED state. We rely on isSeekingRef to prevent this.
     const currentTime = ytPlayerRef.current?.getCurrentTime();
     if (currentTime === undefined) return;
 
@@ -524,7 +517,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return (
       <div 
         className={cn(
-            "absolute inset-0 z-20 flex flex-col justify-between p-4 bg-black/30 transition-opacity duration-300",
+            "absolute inset-0 z-20 flex flex-col justify-between p-2 md:p-4 bg-black/30 transition-opacity duration-300",
             showControls ? "opacity-100" : "opacity-0"
         )}
         onClick={(e) => e.stopPropagation()} // Prevent click from bubbling to the parent
@@ -533,16 +526,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
         <div className="flex items-center justify-center">
            {canControl && (
-            <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-20 h-20">
-                {playerState?.isPlaying ? <Pause className="w-12 h-12" /> : <Play className="w-12 h-12" />}
+            <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-20 md:h-20">
+                {playerState?.isPlaying ? <Pause className="w-8 h-8 md:w-12 md:h-12" /> : <Play className="w-8 h-8 md:w-12 md:h-12" />}
             </Button>
            )}
         </div>
 
-        <div className="flex items-center gap-4 text-white font-mono text-sm">
+        <div className="flex items-center gap-2 md:gap-4 text-white font-mono text-sm">
            {canControl ? (
             <>
-               <span>{formatTime(progress)}</span>
+               <span className="text-xs md:text-sm">{formatTime(progress)}</span>
                <Slider
                     value={[progress]}
                     max={duration}
@@ -550,22 +543,22 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     onValueChange={handleSliderChange}
                     onValueCommit={handleSliderCommit}
                 />
-               <span>{formatTime(duration)}</span>
+               <span className="text-xs md:text-sm">{formatTime(duration)}</span>
             </>
            ) : (
              <>
-               <span>{formatTime(progress)}</span>
+               <span className="text-xs md:text-sm">{formatTime(progress)}</span>
                <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden">
                  <div className="absolute h-full bg-primary" style={{ width: `${(progress / duration) * 100}%`}}></div>
                </div>
-               <span>{formatTime(duration)}</span>
+               <span className="text-xs md:text-sm">{formatTime(duration)}</span>
             </>
            )}
 
             <Popover>
                 <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white">
-                        <VolumeIcon className="w-6 h-6" />
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-10 md:w-10">
+                        <VolumeIcon className="w-5 h-5 md:w-6 md:h-6" />
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none">

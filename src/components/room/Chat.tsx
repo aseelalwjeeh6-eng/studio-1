@@ -79,7 +79,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                                     ? "bg-primary text-primary-foreground rounded-br-none" 
                                     : "bg-secondary text-secondary-foreground rounded-bl-none"
                             )}>
-                                <p className="text-sm md:text-md">{msg.text}</p>
+                                <p className="text-sm md:text-base">{msg.text}</p>
                             </div>
                         </div>
                     );
