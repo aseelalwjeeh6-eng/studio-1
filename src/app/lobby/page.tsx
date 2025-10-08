@@ -146,7 +146,7 @@ export default function LobbyPage() {
                                 <CardTitle className="text-2xl text-white drop-shadow-lg">{userHostedRoom.name}</CardTitle>
                                 <CardDescription className="text-gray-300 flex items-center gap-2">
                                      <Users className="w-4 h-4" />
-                                     {userHostedRoom.memberCount} {userHostedRoom.memberCount !== 1 ? 'أعضاء' : 'عضو'}
+                                     <span style={{ direction: 'ltr' }}>{userHostedRoom.memberCount}</span> {userHostedRoom.memberCount !== 1 ? 'أعضاء' : 'عضو'}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="p-0 mt-4">
@@ -230,7 +230,7 @@ export default function LobbyPage() {
                                                 <p className="font-bold text-foreground truncate max-w-[150px]">{room.name || `غرفة ${room.host}`}</p>
                                                 <p className="text-sm text-muted-foreground flex items-center gap-2">
                                                     <Users className="w-4 h-4" />
-                                                    {room.memberCount} {room.memberCount !== 1 ? 'أعضاء' : 'عضو'}
+                                                    <span style={{ direction: 'ltr' }}>{room.memberCount}</span> {room.memberCount !== 1 ? 'أعضاء' : 'عضو'}
                                                 </p>
                                             </div>
                                         </div>
