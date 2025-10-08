@@ -36,9 +36,10 @@ export interface Message {
   isSystemMessage?: boolean;
 }
 
-const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
+const ChatMessages = ({ roomId, user, inputRef }: { roomId: string; user: User; inputRef: React.RefObject<HTMLInputElement> }) => {
     const viewportRef = useRef<HTMLDivElement>(null);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [isChatInputFocused, setIsChatInputFocused] = useState(false);
 
     useEffect(() => {
         if (!roomId) return;
@@ -61,21 +62,21 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
 
     return (
         <ScrollArea className="h-full w-full" viewportRef={viewportRef}>
-            <div className="p-2 md:p-4 space-y-3 flex flex-col">
+            <div className="p-2 md:p-4 space-y-3 flex flex-col items-end">
                 {messages.map((msg) => {
                     const isCurrentUser = msg.sender === user.name;
                     if (msg.isSystemMessage) {
                         return (
-                            <p key={msg.id} className="text-xs md:text-sm text-muted-foreground italic text-center py-1">
+                            <p key={msg.id} className="text-xs md:text-sm text-muted-foreground italic text-center py-1 w-full">
                                 {msg.text}
                             </p>
                         );
                     }
                     return (
-                        <div key={msg.id} className="flex flex-col items-start self-start">
+                        <div key={msg.id} className="flex flex-col items-start max-w-xs">
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
-                                "max-w-xs p-2 md:p-3 rounded-xl break-words",
+                                "p-2 md:p-3 rounded-xl break-words",
                                 isCurrentUser 
                                   ? "bg-primary text-primary-foreground rounded-br-none" 
                                   : "bg-secondary text-secondary-foreground rounded-bl-none"
@@ -90,7 +91,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement> }) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, onFocus, onBlur, onSend }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement>; onFocus: () => void; onBlur: () => void; onSend: () => void; }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -110,7 +111,7 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef }: 
             };
             await set(newMsgRef, messageData);
             setNewMessage('');
-            inputRef.current?.blur();
+            onSend();
         } catch(error) {
             console.error("Error sending message:", error);
         } finally {
@@ -134,6 +135,8 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef }: 
                     onChange={(e) => setNewMessage(e.target.value)}
                     className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
                     disabled={isSending}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                 />
                 <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
                     <Send className="h-4 w-4" />
