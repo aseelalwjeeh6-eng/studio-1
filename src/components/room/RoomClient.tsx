@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -1286,30 +1287,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
               sendSystemMessage(`${user.name} انضم إلى الغرفة`);
             }
 
-            onDisconnect(memberRef).remove().then(() => {
-                 get(ref(database, `rooms/${roomId}`)).then(finalRoomSnapshot => {
-                     const finalRoomData = finalRoomSnapshot.val();
-                     if (!finalRoomData) return; // Room might have been deleted manually
-
-                     const remainingMembers: Member[] = finalRoomData.members ? Object.values(finalRoomData.members) : [];
-
-                     // If I was the host, transfer host
-                     if (remainingMembers.length > 0 && finalRoomData.host === user.name) {
-                        const moderators: string[] = finalRoomData.moderators || [];
-                        const potentialModeratorHosts = remainingMembers.filter(m => moderators.includes(m.name));
-                        
-                        let newHostName: string;
-                        if (potentialModeratorHosts.length > 0) {
-                            potentialModeratorHosts.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
-                            newHostName = potentialModeratorHosts[0].name;
-                        } else {
-                            remainingMembers.sort((a, b) => (a.joinedAt as number) - (b.joinedAt as number));
-                            newHostName = remainingMembers[0].name;
-                        }
-                        set(ref(database, `rooms/${roomId}/host`), newHostName);
-                     }
-                 });
-            });
+            onDisconnect(memberRef).remove();
         })();
 
         const tokenFetchPromise = (async () => {

@@ -175,7 +175,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         const hostTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         const currentTime = getCurrentTime();
         
-        if (Math.abs(currentTime - hostTime) > 1 && !isSeekingRef.current) {
+        if (Math.abs(currentTime - hostTime) > 1.5 && !isSeekingRef.current) {
           isSeekingRef.current = true;
           console.log(`Resyncing: local=${currentTime.toFixed(2)}s, host=${hostTime.toFixed(2)}s, diff=${(currentTime - hostTime).toFixed(2)}s`);
           seek(hostTime);
@@ -420,7 +420,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             if (!videoId) return renderEmptyState('Invalid YouTube URL');
             return (
                 <YouTube
-                  key={videoId}
+                  key={`${videoId}-${quality}`}
                   videoId={videoId}
                   opts={{
                     height: '100%',
@@ -565,6 +565,37 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     />
                 </PopoverContent>
             </Popover>
+
+            {urlType === 'youtube' && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-10 md:w-10">
+                    <Settings className="w-5 h-5 md:w-6 md:h-6" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none">
+                  <RadioGroup value={quality} onValueChange={(value) => setQuality(value)} className="text-white text-sm">
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="hd1080" id="q1080" />
+                      <Label htmlFor="q1080">1080p</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="hd720" id="q720" />
+                      <Label htmlFor="q720">720p</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="large" id="q480" />
+                      <Label htmlFor="q480">480p</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="medium" id="q360" />
+                      <Label htmlFor="q360">360p</Label>
+                    </div>
+                  </RadioGroup>
+                </PopoverContent>
+              </Popover>
+            )}
+
         </div>
       </div>
     );

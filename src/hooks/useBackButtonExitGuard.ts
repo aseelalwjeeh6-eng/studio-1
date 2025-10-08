@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -17,14 +18,14 @@ export const BackButtonExitGuard = () => {
             // Always push a new state to "catch" the next back button press
             window.history.pushState(null, '', window.location.href);
 
-            // If it's not the root page, just navigate back normally
             // This allows back navigation within the app (e.g., from profile to lobby)
-            if (pathname !== '/lobby' && pathname !== '/') {
+            // But prevents leaving a room
+            if (pathname !== '/lobby' && pathname !== '/' && !pathname.startsWith('/rooms/')) {
                  router.back();
                  return;
             }
 
-            // If on lobby or login page, handle exit logic
+            // If on lobby, login or room page, handle exit logic
             clickCount.current += 1;
 
             if (resetTimeout.current) {
