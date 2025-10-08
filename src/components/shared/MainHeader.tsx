@@ -197,7 +197,7 @@ export function MainHeader() {
           className="flex items-center gap-2"
           aria-label="Home"
         >
-          <Heart className="h-10 w-10 text-primary" />
+           <Image src="https://i.ibb.co/7J9rmdS0/1759934438802.jpg" alt="اصيل سينما Logo" width={40} height={40} className="rounded-full" />
           <span className="hidden sm:inline-block font-headline text-2xl font-bold text-foreground">
             اصيل سينما
           </span>

@@ -220,7 +220,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm bg-card/50 backdrop-blur-lg border-accent/20">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center">
-            <HeartIcon className="h-20 w-20 text-accent" />
+            <Image src="https://i.ibb.co/7J9rmdS0/1759934438802.jpg" alt="اصيل سينما Logo" width={80} height={80} className="rounded-full" />
           </div>
           <CardTitle className="font-headline text-4xl text-foreground">اصيل سينما</CardTitle>
           <CardDescription className="text-muted-foreground text-lg">
