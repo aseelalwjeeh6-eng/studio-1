@@ -766,7 +766,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-        <div className="relative z-10 w-full flex flex-col flex-grow min-h-0">
+        <div className="relative z-10 flex h-full w-full flex-col">
              <RoomHeader 
                 onSearchClick={() => setIsSearchOpen(true)} 
                 onPlaylistClick={() => setIsPlaylistOpen(true)}
@@ -783,7 +783,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="flex-grow w-full overflow-y-auto">
+            <main className="w-full flex-1 overflow-y-auto min-h-0">
               <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 pb-4">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
