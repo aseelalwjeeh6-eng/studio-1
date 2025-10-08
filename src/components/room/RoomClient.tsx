@@ -783,7 +783,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="w-full flex-1 overflow-y-auto min-h-0">
+            <main className="w-full flex-1 overflow-y-auto min-h-0 pb-24">
               <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 pb-4">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
@@ -836,7 +836,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
             {/* Chat Input Area */}
-            <footer className="relative z-20 w-full flex-shrink-0">
+            <footer className="fixed bottom-0 left-0 right-0 z-20">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
