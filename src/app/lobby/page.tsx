@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -6,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw, Copy } from 'lucide-react';
+import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw, Copy, Signal } from 'lucide-react';
 import useUserSession from '@/hooks/use-user-session';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, goOnline } from 'firebase/database';
@@ -219,24 +220,24 @@ export default function LobbyPage() {
                         {activeRooms.length > 0 ? (
                             <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
                                 {activeRooms.map(room => (
-                                    <div key={room.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
+                                    <div key={room.id} 
+                                         className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 cursor-pointer hover:bg-secondary/80 transition-colors"
+                                         onClick={() => router.push(`/rooms/${room.id}`)}
+                                    >
+                                        <div className="flex items-center gap-4 text-accent">
+                                            <Signal className="h-5 w-5" />
+                                            <span style={{ direction: 'ltr' }} className="font-bold text-lg">{room.memberCount}</span>
+                                        </div>
+
                                         <div className="flex items-center gap-3">
+                                            <div className="text-right">
+                                                <p className="font-bold text-foreground truncate max-w-[150px]">{room.name || `غرفة ${room.host}`}</p>
+                                            </div>
                                              <Avatar className="h-12 w-12">
                                                 <AvatarImage src={room.avatarUrl || PlaceHolderImages.find(p => p.id === 'room-bg-1')?.imageUrl || ''} alt={room.name || `غرفة ${room.host}`} />
                                                 <AvatarFallback>{(room.name || `غرفة ${room.host}`).charAt(0)}</AvatarFallback>
                                              </Avatar>
-                                            <div>
-                                                <p className="font-bold text-foreground truncate max-w-[150px]">{room.name || `غرفة ${room.host}`}</p>
-                                                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                                                    <Users className="w-4 h-4" />
-                                                    <span style={{ direction: 'ltr' }}>{room.memberCount}</span> {room.memberCount !== 1 ? 'أعضاء' : 'عضو'}
-                                                </p>
-                                            </div>
                                         </div>
-                                        <Button size="sm" onClick={() => router.push(`/rooms/${room.id}`)}>
-                                            <LogIn className="me-2 h-4 w-4" />
-                                            دخول
-                                        </Button>
                                     </div>
                                 ))}
                             </div>
