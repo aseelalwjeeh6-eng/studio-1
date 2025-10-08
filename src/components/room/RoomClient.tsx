@@ -32,7 +32,7 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Switch } from '../ui/switch';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -704,6 +704,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       if (!isHost || !userName) return;
       const updates: { [key: string]: any } = {};
       updates[`/rooms/${roomId}/host`] = userName;
+      // Demote current host to moderator
       const newModerators = [...moderators.filter(m => m !== userName), hostName];
       updates[`/rooms/${roomId}/moderators`] = newModerators;
 
@@ -801,7 +802,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="w-full flex-1 flex flex-col min-h-0">
+            <main className="w-full flex-1 flex flex-col min-h-0 pb-16">
               <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
@@ -851,7 +852,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
             {/* Chat Input Area */}
-            <footer className="relative z-20 flex-shrink-0">
+            <footer className="fixed bottom-0 left-0 right-0 z-20">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
@@ -1340,12 +1341,15 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
                 remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
             }
             
-            remove(memberRefOnUnmount);
+            if (roomData && roomData.host === user.name) {
+                // Don't remove host, they own the room
+            } else {
+                 remove(memberRefOnUnmount);
+            }
             
             // Cancel all onDisconnect operations for this user
             const allOnDisconnects = [
                 onDisconnect(memberRef),
-                onDisconnect(hostRef),
                 onDisconnect(ref(database, `presence/${user.name}`)),
                 onDisconnect(connectedRef),
             ];
