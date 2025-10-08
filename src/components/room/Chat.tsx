@@ -58,12 +58,12 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
 
     return (
         <ScrollArea className="h-full w-full" viewportRef={viewportRef}>
-            <div className="p-4 space-y-4">
+            <div className="p-2 md:p-4 space-y-3">
                 {messages.map((msg) => {
                     const isCurrentUser = msg.sender === user.name;
                     if (msg.isSystemMessage) {
                         return (
-                            <p key={msg.id} className="text-sm text-muted-foreground italic text-center py-1">
+                            <p key={msg.id} className="text-xs md:text-sm text-muted-foreground italic text-center py-1">
                                 {msg.text}
                             </p>
                         );
@@ -74,12 +74,12 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                                 <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                             )}
                              <div className={cn(
-                                "max-w-xs md:max-w-md p-3 rounded-2xl break-words",
+                                "max-w-xs p-2 md:p-3 rounded-xl break-words",
                                 isCurrentUser 
                                     ? "bg-primary text-primary-foreground rounded-br-none" 
                                     : "bg-secondary text-secondary-foreground rounded-bl-none"
                             )}>
-                                <p className="text-md">{msg.text}</p>
+                                <p className="text-sm md:text-md">{msg.text}</p>
                             </div>
                         </div>
                     );
@@ -117,7 +117,7 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: 
     };
     
     return (
-        <div className="p-4 border-t border-border flex-shrink-0 bg-card/80 backdrop-blur-lg">
+        <div className="p-2 md:p-4 border-t border-border flex-shrink-0 bg-card/80 backdrop-blur-lg">
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
                 {isSeated && (
                     <Button type="button" size="icon" variant="ghost" onClick={onToggleMute}>
@@ -147,8 +147,8 @@ const ChatHeader = ({ isHost, roomId }: { isHost: boolean, roomId: string }) => 
     };
 
     return (
-        <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
-            <h2 className="text-lg font-semibold flex items-center gap-2"><MessageCircle className="text-accent" /><span>الدردشة</span></h2>
+        <div className="flex items-center justify-between p-2 md:p-4 border-b border-border flex-shrink-0">
+            <h2 className="text-md md:text-lg font-semibold flex items-center gap-2"><MessageCircle className="text-accent" /><span>الدردشة</span></h2>
             {isHost && (
                 <AlertDialog>
                     <AlertDialogTrigger asChild>

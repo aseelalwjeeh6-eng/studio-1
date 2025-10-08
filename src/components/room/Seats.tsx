@@ -182,7 +182,7 @@ const Seat = ({
                      <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                              <Avatar className={cn(
-                                "w-16 h-16 border-2 cursor-pointer",
+                                "w-14 h-14 md:w-16 md:h-16 border-2 cursor-pointer",
                                 isSpeaking ? "border-accent animate-pulse" : "border-transparent",
                                 isCurrentUserSeatedHere ? "border-accent ring-2 ring-accent" : ""
                             )}>
@@ -200,7 +200,7 @@ const Seat = ({
         return (
             <button 
                 onClick={() => onTakeSeat(seatId)} 
-                className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center border-2 border-dashed border-border hover:border-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-secondary flex items-center justify-center border-2 border-dashed border-border hover:border-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!canTakeSeat}
             >
                 <Armchair className="w-8 h-8 text-muted-foreground" />
@@ -211,8 +211,8 @@ const Seat = ({
     const nameText = isOccupied ? (isCurrentUserSeatedHere ? "أنت" : seatedMember.name) : "شاغر";
     const getRoleIcon = () => {
         if(!seatedMember) return null;
-        if(isMemberHost) return <Crown className='w-4 h-4 text-yellow-400' title="المضيف" />;
-        if(isMemberModerator) return <ShieldCheck className='w-4 h-4 text-blue-400' title="مشرف" />;
+        if(isMemberHost) return <Crown className='w-3 h-3 md:w-4 md:h-4 text-yellow-400' title="المضيف" />;
+        if(isMemberModerator) return <ShieldCheck className='w-3 h-3 md:w-4 md:h-4 text-blue-400' title="مشرف" />;
         return null;
     }
     const roleIcon = getRoleIcon();
@@ -221,11 +221,11 @@ const Seat = ({
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="flex flex-col items-center gap-1 md:gap-2">
                         {seatContent()}
                          <div className="flex items-center gap-1">
                              {roleIcon}
-                             <p className="text-sm font-semibold text-foreground truncate w-20 text-center">{nameText}</p>
+                             <p className="text-xs md:text-sm font-semibold text-foreground truncate w-16 md:w-20 text-center">{nameText}</p>
                          </div>
                          {isCurrentUserSeatedHere && (
                             <Button onClick={onLeaveSeat} variant="ghost" size="sm" className="h-auto px-2 py-1 text-xs">
@@ -303,8 +303,8 @@ const Seats = ({
     });
   
     return (
-        <div className="w-full bg-card/50 backdrop-blur-lg rounded-lg p-4">
-            <div className="grid grid-cols-4 gap-x-4 gap-y-6">
+        <div className="w-full bg-card/50 backdrop-blur-lg rounded-lg p-2 md:p-4">
+            <div className="grid grid-cols-4 gap-x-2 md:gap-x-4 gap-y-2 md:gap-y-6">
                 {seats.map(({ seatId, seatedMember, participant }) => (
                     <Seat 
                         key={seatId} 

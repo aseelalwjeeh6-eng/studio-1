@@ -88,12 +88,12 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     const avatar = PlaceHolderImages.find(p => p.id === user?.avatarId) ?? PlaceHolderImages[0];
 
     return (
-        <header className="flex items-center justify-between p-4 w-full flex-shrink-0">
-            <div className="flex items-center gap-2">
+        <header className="flex items-center justify-between p-2 md:p-4 w-full flex-shrink-0">
+            <div className="flex items-center gap-1 md:gap-2">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
-                            <MoreVertical className="h-8 w-8" strokeWidth={2.5} />
+                            <MoreVertical className="h-6 w-6 md:h-8 md:w-8" strokeWidth={2.5} />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="bg-card/80 backdrop-blur-lg">
@@ -125,23 +125,23 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
             </div>
 
             {!videoMode && canControl && (
-                <div className='flex items-center gap-2'>
-                    <Button onClick={onPlaylistClick} variant="outline">
-                        <ListMusic className="me-2" />
-                        قائمة التشغيل
+                <div className='flex items-center gap-1 md:gap-2'>
+                    <Button onClick={onPlaylistClick} variant="outline" size="sm">
+                        <ListMusic className="me-1 md:me-2" />
+                        <span className='hidden sm:inline'>قائمة التشغيل</span>
                     </Button>
-                    <Button onClick={onSearchClick} variant="outline">
-                        <Youtube className="me-2" />
-                        إضافة فيديو
+                    <Button onClick={onSearchClick} variant="outline" size="sm">
+                        <Youtube className="me-1 md:me-2" />
+                         <span className='hidden sm:inline'>إضافة فيديو</span>
                     </Button>
                 </div>
             )}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
                 <div className='text-right'>
-                    <p className='font-bold text-foreground truncate max-w-[150px] sm:max-w-xs'>{roomName || `غرفة ${hostName}`}</p>
+                    <p className='font-bold text-foreground truncate max-w-[100px] sm:max-w-xs'>{roomName || `غرفة ${hostName}`}</p>
                     <p>ID: {roomId.slice(0,10)}...</p>
                 </div>
-                <Avatar>
+                <Avatar className="h-8 w-8 md:h-10 md:w-10">
                     <AvatarImage src={avatar?.imageUrl} />
                     <AvatarFallback>{user?.name.charAt(0)}</AvatarFallback>
                 </Avatar>
@@ -784,7 +784,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
             {/* Main Content Area */}
             <div className="w-full flex-grow overflow-y-auto">
-              <div className="w-full max-w-7xl mx-auto flex flex-col gap-4 px-4 pb-4">
+              <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 pb-4">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
                        <VideoConference />
@@ -825,7 +825,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                            </div>
                            <div className="bg-card/50 backdrop-blur-lg rounded-t-lg flex flex-col">
                              <ChatHeader isHost={isHost} roomId={roomId} />
-                             <div className="h-96">
+                             <div className="h-64 md:h-96">
                                <ChatMessages roomId={roomId} user={user} />
                              </div>
                            </div>
