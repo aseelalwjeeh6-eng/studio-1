@@ -45,6 +45,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
         const listener = onValue(chatRef, (snapshot) => {
             const data = snapshot.val();
             const loadedMessages: Message[] = data ? Object.values(data) : [];
+            // Sort messages by timestamp to ensure correct order
             setMessages(loadedMessages.sort((a, b) => a.timestamp - b.timestamp));
         });
         return () => off(chatRef, 'value', listener);
@@ -69,10 +70,8 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
-                            {!isCurrentUser && (
-                                <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
-                            )}
+                        <div key={msg.id} className="flex flex-col items-end">
+                            <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "max-w-xs p-2 md:p-3 rounded-xl break-words",
                                 isCurrentUser 
@@ -89,7 +88,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; }) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onBlur }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; onFocus?: () => void; onBlur?: () => void; }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -131,6 +130,8 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: 
                     onChange={(e) => setNewMessage(e.target.value)}
                     className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
                     disabled={isSending}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                 />
                 <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
                     <Send className="h-4 w-4" />

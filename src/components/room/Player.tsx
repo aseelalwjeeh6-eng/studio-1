@@ -89,7 +89,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
-  const [quality, setQuality] = useState('360p');
+  const [quality, setQuality] = useState('medium');
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
@@ -433,7 +433,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                       modestbranding: 1,
                       iv_load_policy: 3,
                       disablekb: 1,
-                      vq: quality,
+                      playsinline: 1,
+                      vq: quality as 'hd1080' | 'hd720' | 'large' | 'medium' | 'small' | 'tiny' | undefined,
                     },
                   }}
                   onReady={onYtReady}
