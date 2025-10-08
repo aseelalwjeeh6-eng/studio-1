@@ -69,7 +69,6 @@ export default function LobbyPage() {
             hostedRoom = roomDetails;
           }
           
-          // Only show public rooms that are not hosted by the current user
           if (!roomDetails.isPrivate && room.host !== user?.name) {
             loadedRooms.push(roomDetails);
           }
@@ -255,3 +254,5 @@ export default function LobbyPage() {
     </div>
   );
 }
+
+    
