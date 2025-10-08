@@ -172,7 +172,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [pinError, setPinError] = useState(false);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
+  const [isPlaylistOpen, setIsPlaylistOpen]_useState(false);
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -779,7 +779,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-background relative overflow-hidden">
+    <div className="flex flex-col h-screen w-full bg-background relative">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
