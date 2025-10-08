@@ -22,7 +22,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import VideoConference from './VideoConference';
-import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends } from '@/lib/firebase-service';
+import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends, createRoom } from '@/lib/firebase-service';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
@@ -754,7 +754,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="flex flex-col h-screen max-h-screen w-full bg-background items-center overflow-hidden">
+    <div className="flex flex-col h-screen w-full bg-background relative">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -766,8 +766,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-        <div className="relative z-10 w-full flex flex-col flex-grow items-center min-h-0">
-            <RoomHeader 
+        <div className="relative z-10 w-full flex flex-col flex-grow min-h-0">
+             <RoomHeader 
                 onSearchClick={() => setIsSearchOpen(true)} 
                 onPlaylistClick={() => setIsPlaylistOpen(true)}
                 roomId={roomId}
@@ -783,7 +783,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <div className="w-full flex-grow overflow-y-auto">
+            <main className="flex-grow w-full overflow-y-auto">
               <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 pb-4">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
@@ -832,11 +832,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                       </>
                   )}
               </div>
-            </div>
+            </main>
 
 
             {/* Chat Input Area */}
-            <div className="relative z-20 w-full mt-auto flex-shrink-0">
+            <footer className="relative z-20 w-full flex-shrink-0">
                  <ChatInput
                     roomId={roomId} 
                     user={user} 
@@ -844,7 +844,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
                 />
-            </div>
+            </footer>
         </div>
          <div className="hidden">
             <AudioConference />
