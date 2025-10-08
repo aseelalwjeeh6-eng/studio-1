@@ -194,7 +194,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [isChatInputFocused, setIsChatInputFocused] = useState(false);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
@@ -867,49 +866,20 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
             {/* Chat Input Area */}
-            {!isChatInputFocused && (
-                <footer className="fixed bottom-0 left-0 right-0 z-20">
-                    <ChatInput
-                        roomId={roomId} 
-                        user={user} 
-                        isSeated={isSeated}
-                        isMuted={isMuted}
-                        onToggleMute={handleToggleMute}
-                        onFocus={() => setIsChatInputFocused(true)}
-                    />
-                </footer>
-            )}
-        </div>
-         <div className="hidden">
-            <AudioConference />
-        </div>
-    
-    {/* Full Screen Chat Overlay */}
-    {isChatInputFocused && (
-        <div 
-            className="fixed inset-0 z-50 flex flex-col justify-end"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                    setIsChatInputFocused(false);
-                }
-            }}
-        >
-            <div 
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                onClick={() => setIsChatInputFocused(false)}
-            />
-            <div className="z-10">
-                 <ChatInput
+            <footer className="fixed bottom-0 left-0 right-0 z-20">
+                <ChatInput
                     roomId={roomId} 
                     user={user} 
                     isSeated={isSeated}
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
-                    onBlur={() => setIsChatInputFocused(false)}
                 />
-            </div>
+            </footer>
         </div>
-    )}
+         <div className="hidden">
+            <AudioConference />
+        </div>
+    
 
     <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
         <DialogContent className="max-w-md">

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -36,8 +37,8 @@ export interface Message {
 }
 
 const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
-    const [messages, setMessages] = useState<Message[]>([]);
     const viewportRef = useRef<HTMLDivElement>(null);
+    const [messages, setMessages] = useState<Message[]>([]);
 
     useEffect(() => {
         if (!roomId) return;
@@ -46,7 +47,8 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
             const data = snapshot.val();
             const loadedMessages: Message[] = data ? Object.values(data) : [];
             // Sort messages by timestamp to ensure correct order
-            setMessages(loadedMessages.sort((a, b) => a.timestamp - b.timestamp));
+            const sortedMessages = loadedMessages.sort((a, b) => a.timestamp - b.timestamp);
+            setMessages(sortedMessages);
         });
         return () => off(chatRef, 'value', listener);
     }, [roomId]);
@@ -70,9 +72,14 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className="flex flex-col items-end">
+                        <div key={msg.id} className={cn("flex flex-col", isCurrentUser ? "items-end" : "items-start")}>
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
-                             <div className="max-w-xs p-2 md:p-3 rounded-xl break-words bg-secondary text-secondary-foreground rounded-br-none">
+                             <div className={cn(
+                                "max-w-xs p-2 md:p-3 rounded-xl break-words",
+                                isCurrentUser 
+                                  ? "bg-primary text-primary-foreground rounded-br-none" 
+                                  : "bg-secondary text-secondary-foreground rounded-bl-none"
+                             )}>
                                 <p className="text-sm md:text-base">{msg.text}</p>
                             </div>
                         </div>
@@ -83,7 +90,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onBlur }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; onFocus?: () => void; onBlur?: () => void; }) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void;}) => {
     const [newMessage, setNewMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -128,8 +135,6 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, onFocus, onB
                     onChange={(e) => setNewMessage(e.target.value)}
                     className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent"
                     disabled={isSending}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
                 />
                 <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()}>
                     <Send className="h-4 w-4" />
