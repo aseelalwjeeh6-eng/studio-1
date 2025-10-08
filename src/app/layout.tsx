@@ -38,11 +38,11 @@ export default function RootLayout({
             if (typeof window !== 'undefined') {
               const originalConsoleError = console.error;
               console.error = (...args) => {
-                const errorString = args.join(' ');
+                const errorString = (args || []).join(' ');
                 if (errorString.includes('Unknown DataChannel error')) {
                   return;
                 }
-                originalConsoleError(...args);
+                originalConsoleError.apply(console, args);
               };
             }
           `}
