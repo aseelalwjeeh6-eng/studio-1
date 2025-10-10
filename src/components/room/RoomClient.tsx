@@ -178,6 +178,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
 const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const [isChatInputFocused, setIsChatInputFocused] = useState(false);
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
@@ -433,12 +434,26 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 timestamp: Date.now(),
             };
             await set(newMsgRef, messageData);
-            chatInputRef.current?.blur();
+            
+            // Exit typing mode on send
+            if (chatInputRef.current) {
+                chatInputRef.current.blur();
+            }
+            setIsChatInputFocused(false);
+
         } catch(error) {
             console.error("Error sending message:", error);
         } finally {
             setIsSendingMessage(false);
         }
+    };
+
+    const handleChatInputFocus = () => {
+        setIsChatInputFocused(true);
+    };
+
+    const handleChatInputBlur = () => {
+        setIsChatInputFocused(false);
     };
 
 
@@ -812,7 +827,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="relative flex flex-col w-full bg-background" style={{ height: '100dvh' }}>
+    <div className="relative flex flex-col w-full bg-background overflow-hidden" style={{ height: '100dvh' }}>
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -891,7 +906,13 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                   )}
               </div>
             </main>
-
+            
+            {isChatInputFocused && (
+                <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={handleChatInputBlur}
+                />
+            )}
 
             {/* Chat Input Area */}
              <footer className="fixed bottom-0 left-0 right-0 z-20">
@@ -902,8 +923,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
                     inputRef={chatInputRef}
-                    onFocus={() => {}}
-                    onBlur={() => {}}
+                    onFocus={handleChatInputFocus}
+                    onBlur={handleChatInputBlur}
                     onSend={handleSendMessage}
                     isSending={isSendingMessage}
                 />
