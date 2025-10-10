@@ -251,6 +251,42 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
   const [friendData, setFriendData] = useState<{ friends: AppUser[]; requests: AppUser[] }>({ friends: [], requests: [] });
 
+  // --- Wake Lock API for background playback ---
+  const wakeLockRef = useRef<any>(null);
+  useEffect(() => {
+    const acquireWakeLock = async () => {
+      if ('wakeLock' in navigator && !wakeLockRef.current) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log('Wake Lock acquired.');
+          wakeLockRef.current.addEventListener('release', () => {
+            console.log('Wake Lock was released.');
+            wakeLockRef.current = null;
+          });
+        } catch (err: any) {
+          console.error(`${err.name}, ${err.message}`);
+        }
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    };
+
+    if (playerState?.isPlaying) {
+      acquireWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    return () => {
+      releaseWakeLock();
+    };
+  }, [playerState?.isPlaying]);
+
   useEffect(() => {
       if (isPasswordChecked) {
           setIsAuthenticated(!roomPassword);
@@ -863,7 +899,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="relative flex flex-col w-full bg-background overflow-hidden" style={{ height: '100dvh' }}>
+    <div className="relative flex flex-col w-full bg-background overflow-hidden h-full">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
