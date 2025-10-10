@@ -120,7 +120,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         (navigator as any).mediaSession.metadata = null;
         (navigator as any).mediaSession.setActionHandler('play', null);
         (navigator as any).mediaSession.setActionHandler('pause', null);
-        (navigator as any).mediaSession.playbackState = "none";
         return;
       }
       
@@ -687,3 +686,5 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
+    
