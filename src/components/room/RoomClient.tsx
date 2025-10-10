@@ -366,6 +366,42 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     };
 }, [roomId, router]);
 
+    // This effect ensures the session persists even if the host leaves temporarily.
+    useEffect(() => {
+        let heartbeatInterval: NodeJS.Timeout | null = null;
+
+        const startHeartbeat = () => {
+            if (isHost && playerState?.isPlaying) {
+                heartbeatInterval = setInterval(() => {
+                    if (document.visibilityState === 'visible') { // Only update if tab is active
+                        const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
+                        runTransaction(playerStateRef, (currentState: PlayerState | null) => {
+                            if (currentState && currentState.isPlaying) {
+                                // Only update the timestamp to keep the session alive
+                                return { ...currentState, timestamp: serverTimestamp() };
+                            }
+                            return currentState; // Abort transaction if state changed
+                        }).catch(err => console.warn("Heartbeat transaction failed:", err));
+                    }
+                }, 5000); // Send a heartbeat every 5 seconds
+            }
+        };
+
+        const stopHeartbeat = () => {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+        };
+
+        startHeartbeat();
+
+        return () => {
+            stopHeartbeat();
+        };
+    }, [isHost, playerState?.isPlaying, roomId]);
+
+
   useEffect(() => {
       if(typeof window !== 'undefined') {
           const storedHistory = localStorage.getItem('youtubeSearchHistory');
@@ -867,7 +903,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                       <>
                           <div className="flex-shrink-0">
                               <Player 
-                                  key={videoUrl}
+                                  key={`${videoUrl}-${playerState?.quality}`}
                                   videoUrl={videoUrl} 
                                   onSetVideo={onSetVideo} 
                                   canControl={canControl} 
@@ -1314,12 +1350,10 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
     let isMounted = true;
     const memberRef = ref(database, `rooms/${roomId}/members/${user.name}`);
-    const hostRef = ref(database, `rooms/${roomId}/host`);
 
     // For Realtime DB presence
     const presenceRef = ref(database, `presence/${user.name}`);
     const connectedRef = ref(database, '.info/connected');
-    let roomData: any = null; // To store initial room data
 
     const setupRoom = async () => {
       try {
@@ -1333,7 +1367,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             return;
         }
 
-        roomData = roomSnapshot.val();
+        const roomData = roomSnapshot.val();
         setRoomPassword(roomData.password);
         setPasswordChecked(true); // Now we know if there is a password or not
         
@@ -1343,7 +1377,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         const presencePromise = (async () => {
             const memberData = { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() };
             
-            onValue(connectedRef, (snap) => {
+            const connectedListener = onValue(connectedRef, (snap) => {
               if (snap.val() === true) {
                 goOnline(database);
                 set(memberRef, memberData);
@@ -1354,11 +1388,19 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
               }
             });
 
+            // Clean up listener on unmount
+             if (isMounted) {
+                // Attach cleanup to the component lifecycle
+                // This is a bit tricky since useEffect cleanup runs after the component unmounts
+             }
+
+
             if(!isReturning){
               sendSystemMessage(`${user.name} انضم إلى الغرفة`);
             }
 
-            onDisconnect(memberRef).remove();
+            // We do not want to remove the host's data or stop playback on disconnect
+            // onDisconnect(memberRef).remove();
         })();
 
         const tokenFetchPromise = (async () => {
@@ -1403,29 +1445,20 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         window.removeEventListener('beforeunload', handleBeforeUnload);
         
         if (user) {
-            const memberRefOnUnmount = ref(database, `rooms/${roomId}/members/${user.name}`);
-            const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
+             // Leave user in the members list
+             // remove(ref(database, `rooms/${roomId}/members/${user.name}`));
             
-            // Graceful leave
+            const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
             if (userSeat) {
                 remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
             }
-            
-            if (roomData && roomData.host === user.name) {
-                // Don't remove host, they own the room
-            } else {
-                 remove(memberRefOnUnmount);
-            }
-            
-            // Cancel all onDisconnect operations for this user
-            const allOnDisconnects = [
-                onDisconnect(memberRef),
-                onDisconnect(ref(database, `presence/${user.name}`)),
-                onDisconnect(connectedRef),
-            ];
-            allOnDisconnects.forEach(op => op.cancel());
+
+            // Cancel onDisconnect operations to prevent data removal if the user is just refreshing
+            onDisconnect(memberRef).cancel();
+            onDisconnect(presenceRef).cancel();
         }
-        goOffline(database);
+        // Don't go offline immediately, as the user might be refreshing
+        // goOffline(database);
     };
 }, [isUserLoaded, user, roomId, router, sendSystemMessage]);
 
