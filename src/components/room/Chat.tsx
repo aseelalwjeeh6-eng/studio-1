@@ -65,14 +65,14 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
                     const isCurrentUser = msg.sender === user.name;
                     if (msg.isSystemMessage) {
                         return (
-                            <p key={msg.id} className="text-xs md:text-sm text-muted-foreground italic text-center py-1 w-full self-center">
+                            <p key={msg.id} className="text-xs text-muted-foreground italic text-center py-1 w-full self-center">
                                 {msg.text}
                             </p>
                         );
                     }
                     return (
                         <div key={msg.id} className={cn(
-                            "flex flex-col max-w-xs",
+                            "flex flex-col max-w-[80%]",
                             isCurrentUser ? "self-end items-end" : "self-start items-start"
                         )}>
                              {!isCurrentUser && <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>}
@@ -82,7 +82,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
                                   ? "bg-primary text-primary-foreground rounded-br-none" 
                                   : "bg-secondary text-secondary-foreground rounded-bl-none"
                              )}>
-                                <p className="text-sm md:text-base">{msg.text}</p>
+                                <p className="text-sm">{msg.text}</p>
                             </div>
                         </div>
                     );
@@ -106,8 +106,8 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, on
         <div className="p-2 md:p-4 border-t border-border flex-shrink-0 bg-card/80 backdrop-blur-lg">
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
                 {isSeated && (
-                    <Button type="button" size="icon" variant="ghost" onClick={onToggleMute} className="h-11 w-11">
-                        {isMuted ? <MicOff className="w-6 h-6 text-destructive" /> : <Mic className="w-6 h-6 text-accent" />}
+                     <Button type="button" size="icon" variant="ghost" onClick={onToggleMute} className="h-11 w-11 flex-shrink-0">
+                        {isMuted ? <MicOff className="w-5 h-5 text-destructive" /> : <Mic className="w-5 h-5 text-accent" />}
                     </Button>
                 )}
                 <Input
@@ -116,12 +116,12 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, on
                     placeholder="اكتب رسالتك..."
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent h-12"
+                    className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent h-12 flex-grow"
                     disabled={isSending}
                     onFocus={onFocus}
                     onBlur={onBlur}
                 />
-                <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()} className="h-12 w-12">
+                <Button type="submit" size="icon" disabled={isSending || !newMessage.trim()} className="h-12 w-12 flex-shrink-0">
                     <Send className="h-5 w-5" />
                 </Button>
             </form>

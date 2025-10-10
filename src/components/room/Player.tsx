@@ -569,7 +569,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return (
       <div 
         className={cn(
-            "absolute inset-0 z-20 flex flex-col justify-between p-2 md:p-4 bg-black/30 transition-opacity duration-300",
+            "absolute inset-0 z-20 flex flex-col justify-between p-1 md:p-2 bg-black/30 transition-opacity duration-300",
             showControls ? "opacity-100" : "opacity-0"
         )}
         onClick={(e) => e.stopPropagation()} // Prevent click from bubbling to the parent
@@ -578,16 +578,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
         <div className="flex items-center justify-center">
            {canControl && (
-            <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-20 md:h-20">
-                {playerState?.isPlaying ? <Pause className="w-8 h-8 md:w-12 md:h-12" /> : <Play className="w-8 h-8 md:w-12 md:h-12" />}
+            <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-16 md:h-16">
+                {playerState?.isPlaying ? <Pause className="w-8 h-8 md:w-10 md:h-10" /> : <Play className="w-8 h-8 md:w-10 md:h-10" />}
             </Button>
            )}
         </div>
 
-        <div className="flex items-center gap-2 md:gap-4 text-white font-mono text-sm">
+        <div className="flex items-center gap-1 md:gap-2 text-white font-mono text-xs md:text-sm">
            {canControl ? (
             <>
-               <span className="text-xs md:text-sm">{formatTime(progress)}</span>
+               <span className="w-12 text-center">{formatTime(progress)}</span>
                <Slider
                     value={[progress]}
                     max={duration}
@@ -595,22 +595,22 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     onValueChange={handleSliderChange}
                     onValueCommit={handleSliderCommit}
                 />
-               <span className="text-xs md:text-sm">{formatTime(duration)}</span>
+               <span className="w-12 text-center">{formatTime(duration)}</span>
             </>
            ) : (
              <>
-               <span className="text-xs md:text-sm">{formatTime(progress)}</span>
+               <span className="w-12 text-center">{formatTime(progress)}</span>
                <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden">
                  <div className="absolute h-full bg-primary" style={{ width: `${(progress / duration) * 100}%`}}></div>
                </div>
-               <span className="text-xs md:text-sm">{formatTime(duration)}</span>
+               <span className="w-12 text-center">{formatTime(duration)}</span>
             </>
            )}
            
             <Popover>
                 <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-10 md:w-10">
-                        <VolumeIcon className="w-5 h-5 md:w-6 md:h-6" />
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
+                        <VolumeIcon className="w-4 h-4 md:w-5 md:h-5" />
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none">
@@ -628,8 +628,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             {urlType === 'youtube' && canControl && (
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-10 md:w-10">
-                    <Settings className="w-5 h-5 md:w-6 md:h-6" />
+                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
+                    <Settings className="w-4 h-4 md:w-5 md:h-5" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none">

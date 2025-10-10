@@ -895,18 +895,18 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
 
             {/* Chat Input Area */}
-            <footer className="fixed bottom-0 left-0 right-0 z-20">
+             <footer className="fixed bottom-0 left-0 right-0 z-20">
                 <ChatInput
-                    roomId={roomId} 
-                    user={user} 
+                    roomId={roomId}
+                    user={user}
                     isSeated={isSeated}
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
                     inputRef={chatInputRef}
-                    onFocus={() => {}}
-                    onBlur={() => {}}
-                    onSend={async () => {}}
-                    isSending={false}
+                    onFocus={() => setIsChatInputFocused(true)}
+                    onBlur={() => setIsChatInputFocused(false)}
+                    onSend={handleSendMessage}
+                    isSending={isSendingMessage}
                 />
             </footer>
         </div>

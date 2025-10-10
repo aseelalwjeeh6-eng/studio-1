@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Armchair, MicOff, User, LogOut, ShieldX, Crown, ShieldCheck, ArrowDownUp, UserPlus } from 'lucide-react';
@@ -230,7 +231,7 @@ const Seat = ({
                         {seatContent()}
                          <div className="flex items-center gap-1">
                              {roleIcon}
-                             <p className="text-xs md:text-sm font-semibold text-foreground truncate w-16 md:w-20 text-center">{nameText}</p>
+                             <p className="text-xs font-semibold text-foreground truncate w-16 md:w-20 text-center">{nameText}</p>
                          </div>
                          {isCurrentUserSeatedHere && (
                             <Button onClick={onLeaveSeat} variant="ghost" size="sm" className="h-auto px-2 py-1 text-xs">
@@ -309,7 +310,7 @@ const Seats = ({
   
     return (
         <div className="w-full bg-card/50 backdrop-blur-lg rounded-lg p-2 md:p-4">
-            <div className="grid grid-cols-4 gap-x-2 md:gap-x-4 gap-y-2 md:gap-y-6">
+            <div className="grid grid-cols-4 gap-x-2 md:gap-x-4 gap-y-2">
                 {seats.map(({ seatId, seatedMember, participant }) => (
                     <Seat 
                         key={seatId} 
