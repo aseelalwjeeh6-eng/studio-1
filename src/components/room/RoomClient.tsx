@@ -899,7 +899,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }
 
   return (
-    <div className="relative flex flex-col w-full bg-background overflow-hidden h-full">
+    <div className="relative flex flex-col w-full bg-background overflow-y-hidden h-screen">
         {roomBackground && (
             <div className="absolute inset-0 z-0">
                 <Image
@@ -929,7 +929,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             />
 
             {/* Main Content Area */}
-            <main className="w-full max-w-7xl mx-auto flex h-full flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0 pb-[76px] md:pb-[88px]">
+            <main className="w-full max-w-7xl mx-auto flex h-full flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
                        <VideoConference />
@@ -967,7 +967,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   currentUserRequests={friendData.requests}
                               />
                           </div>
-                          <div className="flex-grow flex flex-col bg-card/50 backdrop-blur-lg rounded-t-lg min-h-0">
+                          <div className="flex-grow flex flex-col bg-black/20 backdrop-blur-lg rounded-t-lg min-h-0 pb-[88px] md:pb-[96px]">
                              <ChatHeader isHost={isHost} roomId={roomId} />
                              <div className="flex-grow min-h-0">
                                <ChatMessages roomId={roomId} user={user} />
@@ -985,7 +985,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             )}
 
             {/* Chat Input Area */}
-             <footer className="fixed bottom-0 left-0 right-0 z-20">
+             <footer className="fixed bottom-0 left-0 right-0 z-20 h-[88px] md:h-[96px]">
                 <ChatInput
                     roomId={roomId}
                     user={user}
@@ -1530,3 +1530,5 @@ export default RoomClient;
     
 
       
+
+    
