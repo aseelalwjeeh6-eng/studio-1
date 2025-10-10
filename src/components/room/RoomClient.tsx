@@ -177,6 +177,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
 const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   const isMobile = useIsMobile();
+  const chatInputRef = useRef<HTMLInputElement>(null);
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
@@ -825,6 +826,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                       <>
                           <div className="flex-shrink-0">
                               <Player 
+                                  key={videoUrl}
                                   videoUrl={videoUrl} 
                                   onSetVideo={onSetVideo} 
                                   canControl={canControl} 
@@ -856,7 +858,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                           <div className="flex-grow flex flex-col bg-card/50 backdrop-blur-lg rounded-t-lg min-h-0">
                              <ChatHeader isHost={isHost} roomId={roomId} />
                              <div className="flex-grow min-h-0">
-                               <ChatMessages roomId={roomId} user={user} />
+                               <ChatMessages roomId={roomId} user={user} inputRef={chatInputRef}/>
                              </div>
                            </div>
                       </>
@@ -873,6 +875,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     isSeated={isSeated}
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
+                    inputRef={chatInputRef}
+                    onFocus={() => {}}
+                    onBlur={() => {}}
+                    onSend={() => chatInputRef.current?.blur()}
                 />
             </footer>
         </div>

@@ -91,7 +91,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
-  const [quality, setQuality] = useState('360p');
+  const [quality, setQuality] = useState('auto');
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
@@ -116,7 +116,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   // --- Media Session API Integration ---
   useEffect(() => {
     if ('mediaSession' in navigator) {
-      if (!videoDetails || urlType === 'empty') {
+      if (!videoDetails || urlType === 'empty' || !playerState?.isPlaying) {
         (navigator as any).mediaSession.metadata = null;
         (navigator as any).mediaSession.setActionHandler('play', null);
         (navigator as any).mediaSession.setActionHandler('pause', null);
@@ -124,27 +124,31 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         return;
       }
       
+      const artwork = [];
+      if (videoDetails.snippet.thumbnails.high) {
+        artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
+      }
+      if (videoDetails.snippet.thumbnails.medium) {
+        artwork.push({ src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' });
+      }
+      if (videoDetails.snippet.thumbnails.default) {
+        artwork.push({ src: videoDetails.snippet.thumbnails.default.url, sizes: '120x90', type: 'image/jpeg' });
+      }
+
       const metadata = {
         title: videoDetails.snippet.title,
         artist: videoDetails.snippet.channelTitle,
         album: 'اصيل سينما',
-        artwork: [
-          { src: videoDetails.snippet.thumbnails.default.url, sizes: '120x90', type: 'image/jpeg' },
-          { src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' },
-          { src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' },
-        ]
+        artwork: artwork
       };
+
       (navigator as any).mediaSession.metadata = new MediaMetadata(metadata);
       
-      (navigator as any).mediaSession.setActionHandler('play', () => {
-        if(canControl) togglePlay();
-      });
-      (navigator as any).mediaSession.setActionHandler('pause', () => {
-        if(canControl) togglePlay();
-      });
+      (navigator as any).mediaSession.setActionHandler('play', canControl ? () => togglePlay() : null);
+      (navigator as any).mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
       
     }
-  }, [videoDetails, canControl, togglePlay, urlType]);
+  }, [videoDetails, canControl, togglePlay, urlType, playerState?.isPlaying]);
 
   useEffect(() => {
     if ('mediaSession' in navigator) {
@@ -236,7 +240,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         // This is the Instant Sync logic.
         // It directly seeks to the calculated host time if the deviation is noticeable.
         // A small threshold prevents jerky corrections on minor network latency.
-        if (Math.abs(currentTime - hostTime) > 0.5 && !isSeekingRef.current) {
+        if (Math.abs(currentTime - hostTime) > 1.5 && !isSeekingRef.current) {
           isSeekingRef.current = true;
           console.log(`Instant Sync: local=${currentTime.toFixed(2)}s, host=${hostTime.toFixed(2)}s, diff=${(currentTime - hostTime).toFixed(2)}s`);
           seek(hostTime);
@@ -478,7 +482,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                       iv_load_policy: 3,
                       disablekb: 1,
                       playsinline: 1,
-                      vq: quality as 'hd1080' | 'hd720' | 'large' | 'medium' | 'small' | 'tiny' | undefined,
+                      ...(quality !== 'auto' && {vq: quality})
                     },
                   }}
                   onReady={onYtReady}
@@ -621,6 +625,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 <PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none">
                   <RadioGroup value={quality} onValueChange={(value) => setQuality(value)} className="text-white text-sm">
                     <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="auto" id="qauto" />
+                      <Label htmlFor="qauto">Auto</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
                       <RadioGroupItem value="hd1080" id="q1080" />
                       <Label htmlFor="q1080">1080p</Label>
                     </div>
@@ -670,5 +678,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
-    
