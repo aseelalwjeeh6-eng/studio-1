@@ -254,16 +254,24 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState, canControl, urlType, quality]);
 
+  // This effect is now the single source of truth for the progress bar.
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
-        if (!isPlayerReady.current || !playerState) return;
-
-        const time = getCurrentPlayerTime();
-        if (time !== null && !isNaN(time) && time <= duration) {
-            setProgress(time);
+        if (!playerState || !duration || duration === 0) return;
+        
+        // Mathematical precision: calculate time based on server state.
+        const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
+        
+        if (serverTime <= duration) {
+            setProgress(serverTime);
+        } else {
+            setProgress(duration);
         }
     };
+    
+    // Update immediately, then set interval
+    updateProgress();
     
     if (playerState?.isPlaying) {
       progressInterval = setInterval(updateProgress, 500);
@@ -272,15 +280,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return () => {
       if (progressInterval) clearInterval(progressInterval);
     };
-  }, [playerState?.isPlaying, duration, getCurrentPlayerTime, playerState]);
-  
-  useEffect(() => {
-    if (playerState && duration > 0) {
-        const initialProgress = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
-        if (initialProgress <= duration && initialProgress >= 0) {
-             setProgress(initialProgress);
-        }
-    }
   }, [playerState, duration]);
 
   const seek = useCallback((amount: number) => {

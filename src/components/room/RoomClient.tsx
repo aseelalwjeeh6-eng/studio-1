@@ -902,7 +902,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                   ) : (
                       <>
                           <div className="flex-shrink-0">
-                              <Player 
+                               <Player 
                                   key={`${videoUrl}-${playerState?.quality}`}
                                   videoUrl={videoUrl} 
                                   onSetVideo={onSetVideo} 
@@ -1398,9 +1398,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             if(!isReturning){
               sendSystemMessage(`${user.name} انضم إلى الغرفة`);
             }
-
-            // We do not want to remove the host's data or stop playback on disconnect
-            // onDisconnect(memberRef).remove();
         })();
 
         const tokenFetchPromise = (async () => {
@@ -1445,9 +1442,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         window.removeEventListener('beforeunload', handleBeforeUnload);
         
         if (user) {
-             // Leave user in the members list
-             // remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-            
             const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
             if (userSeat) {
                 remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
@@ -1457,8 +1451,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             onDisconnect(memberRef).cancel();
             onDisconnect(presenceRef).cancel();
         }
-        // Don't go offline immediately, as the user might be refreshing
-        // goOffline(database);
     };
 }, [isUserLoaded, user, roomId, router, sendSystemMessage]);
 
