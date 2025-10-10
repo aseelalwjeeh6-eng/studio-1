@@ -223,8 +223,8 @@ export default function LoginPage() {
             <Image src="https://i.ibb.co/7J9rmdS0/1759934438802.jpg" alt="اصيل سينما Logo" width={80} height={80} className="rounded-full" />
           </div>
           <CardTitle className="font-headline text-4xl text-foreground">اصيل سينما</CardTitle>
-          <CardDescription className="text-muted-foreground text-lg">
-            مكان للعشاق
+          <CardDescription className="text-muted-foreground text-lg px-2">
+            شاهد مع أصدقائك، وتحدث مباشرة، في تجربة سينمائية فريدة.
           </CardDescription>
         </CardHeader>
         <CardContent>
