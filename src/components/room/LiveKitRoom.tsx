@@ -7,6 +7,7 @@ import {
 import { Loader2 } from 'lucide-react';
 import type { User } from '@/app/providers';
 import { ConnectionState } from 'livekit-client';
+import { useEffect } from 'react';
 
 interface LiveKitRoomProps {
   token: string;
@@ -22,8 +23,10 @@ const RoomLayoutWithConnectivity = ({ isSeated, videoMode, children }: Pick<Live
     const isConnected = room.connectionState === ConnectionState.Connected;
 
     // Enable audio/video only when the user is seated AND the room is connected.
-    room.localParticipant.setCameraEnabled(videoMode && isSeated && isConnected);
-    room.localParticipant.setMicrophoneEnabled(isSeated && isConnected);
+    if (room.localParticipant) {
+      room.localParticipant.setCameraEnabled(videoMode && isSeated && isConnected);
+      room.localParticipant.setMicrophoneEnabled(isSeated && isConnected);
+    }
     
     return <>{children}</>;
 }
