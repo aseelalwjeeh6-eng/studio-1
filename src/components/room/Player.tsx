@@ -116,7 +116,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   // --- Media Session API Integration ---
   useEffect(() => {
     if ('mediaSession' in navigator) {
-      if (!videoDetails || urlType === 'empty' || !playerState?.isPlaying) {
+      if (!videoDetails || urlType === 'empty') {
         (navigator as any).mediaSession.metadata = null;
         (navigator as any).mediaSession.setActionHandler('play', null);
         (navigator as any).mediaSession.setActionHandler('pause', null);
@@ -148,7 +148,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       (navigator as any).mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
       
     }
-  }, [videoDetails, canControl, togglePlay, urlType, playerState?.isPlaying]);
+  }, [videoDetails, canControl, togglePlay, urlType]);
 
   useEffect(() => {
     if ('mediaSession' in navigator) {
@@ -678,3 +678,5 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
+    
