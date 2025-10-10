@@ -91,7 +91,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
-  const [quality, setQuality] = useState('auto');
+  const [quality, setQuality] = useState(playerState?.quality ?? 'auto');
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
@@ -156,7 +156,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState?.isPlaying]);
 
-
   // --- Generic Player Control ---
   const getCurrentPlayerTime = useCallback(() => {
     try {
@@ -188,6 +187,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   // Effect for syncing remote state to local player (for viewers)
   useEffect(() => {
     if (!isPlayerReady.current || !playerState) return;
+
+    if (playerState.quality && quality !== playerState.quality) {
+        setQuality(playerState.quality);
+    }
     
     const newVolume = playerState.volume ?? 0.8;
     setVolume(newVolume);
@@ -249,7 +252,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) {
         console.warn("Error syncing player state:", e);
     }
-  }, [playerState, canControl, urlType]);
+  }, [playerState, canControl, urlType, quality]);
 
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
@@ -342,6 +345,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   };
   
+  const handleQualityChange = (newQuality: string) => {
+    setQuality(newQuality);
+    if(canControl) {
+        handleStateChange({ quality: newQuality });
+    }
+  }
+
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (urlType === 'empty' || urlType === 'iframe') {
         if(canControl) onSearchClick();
@@ -615,7 +625,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 </PopoverContent>
             </Popover>
 
-            {urlType === 'youtube' && (
+            {urlType === 'youtube' && canControl && (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-10 md:w-10">
@@ -623,7 +633,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none">
-                  <RadioGroup value={quality} onValueChange={(value) => setQuality(value)} className="text-white text-sm">
+                  <RadioGroup value={quality} onValueChange={handleQualityChange} className="text-white text-sm">
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="auto" id="qauto" />
                       <Label htmlFor="qauto">Auto</Label>
@@ -678,5 +688,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
-    

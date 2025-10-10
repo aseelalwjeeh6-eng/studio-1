@@ -36,10 +36,9 @@ export interface Message {
   isSystemMessage?: boolean;
 }
 
-const ChatMessages = ({ roomId, user, inputRef }: { roomId: string; user: User; inputRef: React.RefObject<HTMLInputElement> }) => {
+const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
     const viewportRef = useRef<HTMLDivElement>(null);
     const [messages, setMessages] = useState<Message[]>([]);
-    const [isChatInputFocused, setIsChatInputFocused] = useState(false);
 
     useEffect(() => {
         if (!roomId) return;
@@ -73,7 +72,7 @@ const ChatMessages = ({ roomId, user, inputRef }: { roomId: string; user: User; 
                         );
                     }
                     return (
-                        <div key={msg.id} className="flex flex-col items-start max-w-xs">
+                        <div key={msg.id} className="flex flex-col items-start max-w-xs self-start">
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "p-2 md:p-3 rounded-xl break-words",

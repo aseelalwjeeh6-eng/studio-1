@@ -85,6 +85,7 @@ export type PlayerState = {
     seekTime: number;
     timestamp: number;
     volume: number;
+    quality: string;
 }
 
 const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwitchToVideo, onSwitchToPlayer, videoMode, onInviteClick, onSettingsClick, roomName, hostName, canControl }: { onSearchClick: () => void; onPlaylistClick: () => void; roomId: string; onLeaveRoom: () => void, onSwitchToVideo: () => void; onSwitchToPlayer: () => void; videoMode: boolean; onInviteClick: () => void; onSettingsClick: () => void; roomName?: string; hostName: string; canControl: boolean; }) => {
@@ -468,18 +469,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         seekTime: startTime, 
         timestamp: serverTimestamp(),
         volume: playerState?.volume ?? 0.8,
+        quality: playerState?.quality ?? 'auto'
       };
       
       update(ref(database), updates);
     }
-  }, [canControl, roomId, playerState?.volume]);
+  }, [canControl, roomId, playerState?.volume, playerState?.quality]);
   
   const handlePlayerStateChange = useCallback((newState: Partial<PlayerState>) => {
     if (!canControl) return;
     const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
     
     runTransaction(playerStateRef, (currentState: PlayerState | null) => {
-        const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, timestamp: Date.now() };
+        const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
 
         const shouldUpdateTimestamp = (newState.isPlaying !== undefined && newState.isPlaying !== current.isPlaying) || newState.seekTime !== undefined;
 
@@ -858,7 +860,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                           <div className="flex-grow flex flex-col bg-card/50 backdrop-blur-lg rounded-t-lg min-h-0">
                              <ChatHeader isHost={isHost} roomId={roomId} />
                              <div className="flex-grow min-h-0">
-                               <ChatMessages roomId={roomId} user={user} inputRef={chatInputRef}/>
+                               <ChatMessages roomId={roomId} user={user} />
                              </div>
                            </div>
                       </>
@@ -1418,5 +1420,3 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 };
 
 export default RoomClient;
-
-    
