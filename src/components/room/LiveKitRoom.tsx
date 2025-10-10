@@ -33,13 +33,13 @@ const RoomLayoutWithConnectivity = ({ isSeated, videoMode, children }: Pick<Live
                 // This helps in scenarios where browsers (especially on mobile) default to 
                 // the earpiece when a microphone is enabled. This call ensures it
                 // tries to switch to the main speaker/headphones when possible.
-                room.switchActiveDevice('audiooutput', undefined);
+                room.switchActiveDevice('audiooutput');
             }
         };
         room.on(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
         // Initial check in case we are already connected
         if (room.connectionState === ConnectionState.Connected) {
-            room.switchActiveDevice('audiooutput', undefined);
+            room.switchActiveDevice('audiooutput');
         }
         return () => {
             room.off(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
