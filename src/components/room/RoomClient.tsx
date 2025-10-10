@@ -178,7 +178,6 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
 const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const [isChatInputFocused, setIsChatInputFocused] = useState(false);
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
@@ -511,7 +510,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             if (chatInputRef.current) {
                 chatInputRef.current.blur();
             }
-            setIsChatInputFocused(false);
 
         } catch(error) {
             console.error("Error sending message:", error);
@@ -521,11 +519,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     };
 
     const handleChatInputFocus = () => {
-        setIsChatInputFocused(true);
+        // Handled by CSS now
     };
 
     const handleChatInputBlur = () => {
-        setIsChatInputFocused(false);
+        // Handled by CSS now
     };
 
 
@@ -967,7 +965,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   currentUserRequests={friendData.requests}
                               />
                           </div>
-                          <div className="flex-grow flex flex-col bg-black/20 backdrop-blur-lg rounded-t-lg min-h-0 pb-[88px] md:pb-[96px]">
+                          <div className="flex-grow flex flex-col bg-black/20 backdrop-blur-lg rounded-t-lg min-h-0 pb-20">
                              <ChatHeader isHost={isHost} roomId={roomId} />
                              <div className="flex-grow min-h-0">
                                <ChatMessages roomId={roomId} user={user} />
@@ -976,16 +974,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                       </>
                   )}
             </main>
-            
-            {isChatInputFocused && (
-                <div 
-                    className="fixed inset-0 z-10" 
-                    onClick={handleChatInputBlur}
-                />
-            )}
 
             {/* Chat Input Area */}
-             <footer className="fixed bottom-0 left-0 right-0 z-20 h-[88px] md:h-[96px]">
+             <footer className="fixed bottom-0 left-0 right-0 z-20">
                 <ChatInput
                     roomId={roomId}
                     user={user}
