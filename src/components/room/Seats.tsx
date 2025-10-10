@@ -69,7 +69,7 @@ const Seat = ({
     const isMemberModerator = seatedMember ? moderators.includes(seatedMember.name) : false;
     const isCurrentUserModerator = moderators.includes(currentUser.name);
     
-    const isMuted = participant ? participant.isMicrophoneMuted : true;
+    const isMuted = participant ? !participant.isMicrophoneEnabled : true;
     const isSpeaking = participant ? participant.isSpeaking : false;
     
     const avatar = PlaceHolderImages.find(p => p.id === seatedMember?.avatarId) ?? PlaceHolderImages[0];
@@ -194,6 +194,11 @@ const Seat = ({
                         </DropdownMenuTrigger>
                         {controls}
                     </DropdownMenu>
+                    {isMuted && (
+                        <div className="absolute top-0 right-0 bg-destructive/80 text-destructive-foreground rounded-full p-1 border-2 border-card" title="الصوت مكتوم">
+                            <MicOff className="w-3 h-3" />
+                        </div>
+                    )}
                 </div>
             )
         }

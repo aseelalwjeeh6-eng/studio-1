@@ -177,7 +177,6 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
 
 const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
-  const isMobile = useIsMobile();
   const chatInputRef = useRef<HTMLInputElement>(null);
   
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -196,6 +195,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  
+  const [isChatInputFocused, setIsChatInputFocused] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
@@ -417,6 +420,28 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         localParticipant.setMicrophoneEnabled(!localParticipant.isMicrophoneEnabled);
     }
   };
+  
+    const handleSendMessage = async (text: string) => {
+        if (isSendingMessage) return;
+        setIsSendingMessage(true);
+        try {
+            const chatRef = ref(database, `rooms/${roomId}/chat`);
+            const newMsgRef = push(chatRef);
+            const messageData: Message = {
+                id: newMsgRef.key!,
+                sender: user.name,
+                text: text,
+                timestamp: Date.now(),
+            };
+            await set(newMsgRef, messageData);
+            chatInputRef.current?.blur();
+        } catch(error) {
+            console.error("Error sending message:", error);
+        } finally {
+            setIsSendingMessage(false);
+        }
+    };
+
 
   const updateSearchHistory = (query: string) => {
       if(typeof window === 'undefined' || !query) return;
@@ -880,10 +905,34 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     inputRef={chatInputRef}
                     onFocus={() => {}}
                     onBlur={() => {}}
-                    onSend={() => chatInputRef.current?.blur()}
+                    onSend={async () => {}}
+                    isSending={false}
                 />
             </footer>
         </div>
+        
+         {isChatInputFocused && (
+            <div 
+                className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm"
+                onClick={() => chatInputRef.current?.blur()}
+            >
+                <div className="absolute bottom-0 left-0 right-0" onClick={(e) => e.stopPropagation()}>
+                    <ChatInput
+                        roomId={roomId}
+                        user={user}
+                        isSeated={isSeated}
+                        isMuted={isMuted}
+                        onToggleMute={handleToggleMute}
+                        inputRef={chatInputRef}
+                        onFocus={() => setIsChatInputFocused(true)}
+                        onBlur={() => setIsChatInputFocused(false)}
+                        onSend={handleSendMessage}
+                        isSending={isSendingMessage}
+                    />
+                </div>
+            </div>
+        )}
+        
          <div className="hidden">
             <AudioConference />
         </div>
