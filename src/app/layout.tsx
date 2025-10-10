@@ -14,10 +14,33 @@ const alegreya = Alegreya({
   variable: '--font-alegreya',
 });
 
+const title = 'اصيل سينما';
+const description = 'سجل دخولك، أنشئ غرفة، وشاهد مع أصدقائك في شاشة واحدة مع محادثة صوتية ونصية مباشرة. تجربة سينمائية فريدة وممتعة تنتظرك!';
+const imageUrl = 'https://i.ibb.co/7J9rmdS0/1759934438802.jpg';
+
 export const metadata: Metadata = {
-  title: 'اصيل سينما',
-  description: 'منصة مشاهدة أفلام للعشاق',
+  title: title,
+  description: description,
   manifest: '/manifest.json',
+  openGraph: {
+    title: title,
+    description: description,
+    type: 'website',
+    images: [
+      {
+        url: imageUrl,
+        width: 1200,
+        height: 630,
+        alt: title,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: title,
+    description: description,
+    images: [imageUrl],
+  },
 };
 
 export default function RootLayout({
@@ -28,8 +51,8 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="https://i.ibb.co/7J9rmdS0/1759934438802.jpg" />
-        <link rel="apple-touch-icon" href="https://i.ibb.co/7J9rmdS0/1759934438802.jpg"></link>
+        <link rel="icon" href={imageUrl} />
+        <link rel="apple-touch-icon" href={imageUrl}></link>
         <meta name="theme-color" content="#26000A" />
       </head>
       <body className={cn('font-body antialiased', alegreya.className)}>
