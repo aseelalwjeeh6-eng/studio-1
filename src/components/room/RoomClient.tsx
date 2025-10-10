@@ -196,7 +196,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
   
-  const [isChatInputFocused, setIsChatInputFocused] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
 
@@ -844,7 +843,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
             {/* Main Content Area */}
             <main className="w-full flex-1 flex flex-col min-h-0 pb-16">
-              <div className="w-full max-w-7xl mx-auto flex flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
+              <div className="w-full max-w-7xl mx-auto flex h-full flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
                   {videoMode ? (
                      <div className="flex-grow rounded-lg overflow-hidden h-full">
                        <VideoConference />
@@ -903,35 +902,13 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     isMuted={isMuted}
                     onToggleMute={handleToggleMute}
                     inputRef={chatInputRef}
-                    onFocus={() => setIsChatInputFocused(true)}
-                    onBlur={() => setIsChatInputFocused(false)}
+                    onFocus={() => {}}
+                    onBlur={() => {}}
                     onSend={handleSendMessage}
                     isSending={isSendingMessage}
                 />
             </footer>
         </div>
-        
-         {isChatInputFocused && (
-            <div 
-                className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm"
-                onClick={() => chatInputRef.current?.blur()}
-            >
-                <div className="absolute bottom-0 left-0 right-0" onClick={(e) => e.stopPropagation()}>
-                    <ChatInput
-                        roomId={roomId}
-                        user={user}
-                        isSeated={isSeated}
-                        isMuted={isMuted}
-                        onToggleMute={handleToggleMute}
-                        inputRef={chatInputRef}
-                        onFocus={() => setIsChatInputFocused(true)}
-                        onBlur={() => setIsChatInputFocused(false)}
-                        onSend={handleSendMessage}
-                        isSending={isSendingMessage}
-                    />
-                </div>
-            </div>
-        )}
         
          <div className="hidden">
             <AudioConference />
@@ -1469,3 +1446,5 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 };
 
 export default RoomClient;
+
+    
