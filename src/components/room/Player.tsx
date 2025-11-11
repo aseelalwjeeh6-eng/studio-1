@@ -392,12 +392,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
 
-    if (playerState && playerState.seekTime < ytDuration) {
-        const initialSeekTime = canControl || !playerState.isPlaying
-            ? playerState.seekTime
-            : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
-        
-        event.target.seekTo(Math.min(initialSeekTime, ytDuration), true);
+    if (playerState) {
         if (playerState.isPlaying) event.target.playVideo();
         else event.target.pauseVideo();
     }
@@ -686,5 +681,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
+    
 
     
