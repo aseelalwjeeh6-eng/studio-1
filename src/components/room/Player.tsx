@@ -239,16 +239,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         const hostTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         const currentTime = getCurrentTime();
         
-        // This is the Instant Sync logic.
-        // It directly seeks to the calculated host time if the deviation is noticeable.
-        // A small threshold prevents jerky corrections on minor network latency.
-        if (Math.abs(currentTime - hostTime) > 1.5 && !isSeekingRef.current) {
+        if (Math.abs(currentTime - hostTime) > 2 && !isSeekingRef.current) {
           isSeekingRef.current = true;
-          console.log(`Instant Sync: local=${currentTime.toFixed(2)}s, host=${hostTime.toFixed(2)}s, diff=${(currentTime - hostTime).toFixed(2)}s`);
+          console.log(`Syncing: local=${currentTime.toFixed(2)}s, host=${hostTime.toFixed(2)}s, diff=${(currentTime - hostTime).toFixed(2)}s`);
           seek(hostTime);
           setTimeout(() => { isSeekingRef.current = false; }, 500); // Prevent rapid-fire seeking
         }
-    } catch (e) {
+    } catch (e) => {
         console.warn("Error syncing player state:", e);
     }
   }, [playerState, canControl, urlType, quality]);
@@ -464,6 +461,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     switch(urlType) {
         case 'youtube':
             if (!videoId) return renderEmptyState('Invalid YouTube URL');
+            const startSeconds = playerState?.seekTime ? Math.floor(playerState.seekTime) : 0;
             return (
                 <YouTube
                   key={`${videoId}-${quality}`}
@@ -473,6 +471,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     width: '100%',
                     playerVars: {
                       autoplay: playerState?.isPlaying ? 1 : 0,
+                      start: startSeconds,
                       controls: 0,
                       rel: 0,
                       showinfo: 0,
@@ -676,7 +675,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
-    
-
-    
