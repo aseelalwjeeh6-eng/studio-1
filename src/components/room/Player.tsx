@@ -391,11 +391,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const initialVolume = playerState?.volume ?? 0.8;
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
-
-    if (playerState) {
-        if (playerState.isPlaying) event.target.playVideo();
-        else event.target.pauseVideo();
-    }
   };
 
   const onYtStateChange = (event: { data: number }) => {
