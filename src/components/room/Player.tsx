@@ -245,7 +245,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           seek(hostTime);
           setTimeout(() => { isSeekingRef.current = false; }, 500); // Prevent rapid-fire seeking
         }
-    } catch (e) => {
+    } catch (e) {
         console.warn("Error syncing player state:", e);
     }
   }, [playerState, canControl, urlType, quality]);
@@ -424,9 +424,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(initialVolume);
 
     if (playerState && playerState.seekTime < htmlDuration) {
-        const initialSeekTime = canControl || !playerState.isPlaying
-            ? playerState.seekTime
-            : playerState.seekTime + (Date.now() - playerState.timestamp) / 1000;
+        const initialSeekTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
         
         htmlPlayerRef.current.currentTime = Math.min(initialSeekTime, htmlDuration);
         if (playerState.isPlaying) htmlPlayerRef.current.play().catch(console.error);
@@ -461,7 +459,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     switch(urlType) {
         case 'youtube':
             if (!videoId) return renderEmptyState('Invalid YouTube URL');
-            const startSeconds = playerState?.seekTime ? Math.floor(playerState.seekTime) : 0;
+            const startSeconds = (playerState?.seekTime ?? 0) + ((playerState?.isPlaying && playerState?.timestamp) ? (Date.now() - playerState.timestamp) / 1000 : 0);
+
             return (
                 <YouTube
                   key={`${videoId}-${quality}`}
@@ -471,7 +470,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     width: '100%',
                     playerVars: {
                       autoplay: playerState?.isPlaying ? 1 : 0,
-                      start: startSeconds,
+                      start: Math.floor(startSeconds),
                       controls: 0,
                       rel: 0,
                       showinfo: 0,

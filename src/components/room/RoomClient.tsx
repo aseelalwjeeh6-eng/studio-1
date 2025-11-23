@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -965,9 +966,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   currentUserRequests={friendData.requests}
                               />
                           </div>
-                          <div className="flex-grow flex flex-col bg-black/20 backdrop-blur-lg rounded-t-lg min-h-0 pb-20">
+                          <div className="flex-grow flex flex-col bg-black/20 backdrop-blur-lg rounded-t-lg min-h-0">
                              <ChatHeader isHost={isHost} roomId={roomId} />
-                             <div className="flex-grow min-h-0">
+                             <div className="flex-grow min-h-0 pb-[88px] md:pb-[96px]">
                                <ChatMessages roomId={roomId} user={user} />
                              </div>
                            </div>
