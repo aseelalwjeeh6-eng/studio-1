@@ -85,6 +85,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const htmlPlayerRef = useRef<HTMLVideoElement | null>(null);
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -95,6 +96,77 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
+
+  // --- Synchronization Logic ---
+  const syncPlayerState = useCallback(() => {
+    if (canControl || !isPlayerReady.current || !playerState || !duration) {
+      return;
+    }
+
+    let currentPlayerTime = 0;
+    try {
+        if (ytPlayerRef.current) {
+            currentPlayerTime = ytPlayerRef.current.getCurrentTime();
+        } else if (htmlPlayerRef.current) {
+            currentPlayerTime = htmlPlayerRef.current.currentTime;
+        } else {
+            return; // No active player
+        }
+    } catch (e) {
+        console.warn("Sync: Could not get current player time", e);
+        return;
+    }
+
+    const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
+    const timeDifference = serverTime - currentPlayerTime;
+
+    // Apply Smart Correction Algorithm
+    if (Math.abs(timeDifference) > 2) { // Hard Sync
+      try {
+        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(serverTime, true);
+        if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = serverTime;
+        console.log(`Hard Sync: Correcting by ${timeDifference.toFixed(2)}s`);
+      } catch (e) { console.warn("Hard Sync failed", e); }
+    }
+    // Soft Sync is implicitly handled by the continuous progress bar update and player's own buffering
+
+    // Sync play/pause state
+    try {
+        if (ytPlayerRef.current) {
+            const ytState = ytPlayerRef.current.getPlayerState();
+            if (playerState.isPlaying && ytState !== 1) { // Is playing on server, but not locally
+                ytPlayerRef.current.playVideo();
+            } else if (!playerState.isPlaying && ytState === 1) { // Is paused on server, but playing locally
+                ytPlayerRef.current.pauseVideo();
+            }
+        }
+        if (htmlPlayerRef.current) {
+            if (playerState.isPlaying && htmlPlayerRef.current.paused) {
+                htmlPlayerRef.current.play().catch(console.error);
+            } else if (!playerState.isPlaying && !htmlPlayerRef.current.paused) {
+                htmlPlayerRef.current.pause();
+            }
+        }
+    } catch (e) { console.warn("Play/Pause Sync failed", e); }
+
+  }, [canControl, playerState, duration]);
+
+  // Main sync loop
+  useEffect(() => {
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+    }
+    if (!canControl) {
+      syncIntervalRef.current = setInterval(syncPlayerState, 1000);
+    }
+
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+    };
+  }, [canControl, syncPlayerState]);
+
 
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
@@ -155,35 +227,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState?.isPlaying]);
 
-  // --- Generic Player Control ---
-  const getCurrentPlayerTime = useCallback(() => {
-    try {
-        if (ytPlayerRef.current) return ytPlayerRef.current.getCurrentTime();
-        if (htmlPlayerRef.current) return htmlPlayerRef.current.currentTime;
-    } catch(e) {
-        console.warn("Couldn't get player time", e);
-    }
-    return 0;
-  }, []);
 
-  const getPlayerState = useCallback(() => {
-     try {
-        if (ytPlayerRef.current) return ytPlayerRef.current.getPlayerState();
-        if (htmlPlayerRef.current) return htmlPlayerRef.current.paused ? 2 : 1;
-     } catch(e) {
-        console.warn("Couldn't get player state", e);
-     }
-     return -1; // unstarted
-  }, []);
-
-  // --- Syncing Logic ---
-  const handleStateChange = useCallback((newState: Partial<PlayerState>) => {
-    if (canControl) {
-      onPlayerStateChange(newState);
-    }
-  }, [canControl, onPlayerStateChange]);
-
-  // This effect is now the single source of truth for the progress bar.
+  // --- This effect is now the single source of truth for the progress bar.
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
@@ -213,7 +258,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   const seek = useCallback((amount: number) => {
     if (!canControl || !isPlayerReady.current || !duration) return;
-    const currentTime = getCurrentPlayerTime();
+    
+    let currentTime = 0;
+    try {
+        if (ytPlayerRef.current) currentTime = ytPlayerRef.current.getCurrentTime();
+        if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
+    } catch(e) { console.warn("Couldn't get player time for seek", e); }
+
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     
     isSeekingRef.current = true;
@@ -226,10 +277,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         return;
     }
     setProgress(newTime);
-    handleStateChange({ seekTime: newTime });
+    onPlayerStateChange({ seekTime: newTime });
     
     setTimeout(() => { isSeekingRef.current = false; }, 500);
-  }, [canControl, handleStateChange, duration, getCurrentPlayerTime]);
+  }, [canControl, duration, onPlayerStateChange]);
 
   const handleSliderChange = (value: number[]) => {
     if (!canControl || !isPlayerReady.current) return;
@@ -253,7 +304,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       } catch(e) {
         console.warn("Could not commit YouTube seek");
       }
-      handleStateChange({ seekTime: newTime });
+      onPlayerStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
   };
   
@@ -269,14 +320,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
     
     if(canControl) {
-        handleStateChange({ volume: vol });
+        onPlayerStateChange({ volume: vol });
     }
   };
   
   const handleQualityChange = (newQuality: string) => {
     setQuality(newQuality);
     if(canControl) {
-        handleStateChange({ quality: newQuality });
+        onPlayerStateChange({ quality: newQuality });
     }
   }
 
@@ -332,11 +383,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     if (event.data === 1) { // Playing
       if (!playerState?.isPlaying) {
-        handleStateChange({ isPlaying: true, seekTime: currentTime });
+        onPlayerStateChange({ isPlaying: true, seekTime: currentTime });
       }
     } else if (event.data === 2) { // Paused
        if (playerState?.isPlaying) {
-        handleStateChange({ isPlaying: false, seekTime: currentTime });
+        onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
       }
     }
   };
@@ -356,14 +407,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const initialVolume = playerState?.volume ?? 0.8;
     htmlPlayerRef.current.volume = initialVolume;
     setVolume(initialVolume);
-
-    if (playerState && playerState.seekTime < htmlDuration) {
-        const initialSeekTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
-        
-        htmlPlayerRef.current.currentTime = Math.min(initialSeekTime, htmlDuration);
-        if (playerState.isPlaying) htmlPlayerRef.current.play().catch(console.error);
-        else htmlPlayerRef.current.pause();
-    }
+    
+    // The syncPlayerState will handle setting the correct time and play state
   };
   
   const onHtmlStateChange = () => {
@@ -371,7 +416,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       
       const isPlaying = !htmlPlayerRef.current.paused;
       if (playerState?.isPlaying !== isPlaying) {
-          handleStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
+          onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
       }
   };
 
@@ -423,10 +468,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             );
         
         case 'direct':
+             const directStartSeconds = (playerState?.seekTime ?? 0) + ((playerState?.isPlaying && playerState?.timestamp) ? (Date.now() - playerState.timestamp) / 1000 : 0);
             return (
                 <video
                     ref={htmlPlayerRef}
-                    src={videoUrl}
+                    src={`${videoUrl}#t=${directStartSeconds}`}
                     className="w-full h-full object-contain"
                     onLoadedData={onHtmlReady}
                     onPlay={onHtmlStateChange}
@@ -608,3 +654,5 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
+
+    
