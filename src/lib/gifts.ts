@@ -10,6 +10,7 @@ export interface Gift {
   message: string;
   emoji: string;
   animation: string;
+  soundUrl?: string;
 }
 
 export interface CoinPackage {

@@ -12,7 +12,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock, EyeOff, Copy } from 'lucide-react';
+import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock, EyeOff, Copy, Gift } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -36,6 +36,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
+import { Gifts } from '@/lib/gifts';
 
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -902,8 +903,12 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
   const handleSendGift = async (recipientName: string, giftId: string) => {
     if(!user) throw new Error("User not found");
-    const newBalance = await sendGift(user.name, recipientName, giftId, roomId);
-    // The user context will update via the listener in MainHeader
+    await sendGift(user.name, recipientName, giftId, roomId);
+
+    const gift = Gifts.find(g => g.id === giftId);
+    if (gift) {
+      sendSystemMessage(`🎁 أرسل ${user.name} هدية "${gift.name}" إلى ${recipientName} بقيمة ${gift.cost.toLocaleString()} كوينز`);
+    }
   };
 
   if (!isAuthenticated) {
@@ -1022,6 +1027,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     onBlur={handleChatInputBlur}
                     onSend={handleSendMessage}
                     isSending={isSendingMessage}
+                    onOpenGiftShop={() => {
+                      setGiftingTo(''); // No pre-selected recipient
+                      setIsGiftShopOpen(true);
+                    }}
                 />
             </footer>
         </div>
@@ -1035,6 +1044,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         onOpenChange={setIsGiftShopOpen}
         recipientName={giftingTo}
         onSendGift={handleSendGift}
+        seatedMembers={seatedMembers}
     />
 
     <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
@@ -1563,6 +1573,10 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       user={user}
       isSeated={isSeated}
       videoMode={videoMode}
+      connectOptions={{
+        autoSubscribe: true,
+        expSignalConnectTimeout: 20000,
+      }}
     >
       <RoomLayout 
         roomId={roomId} 

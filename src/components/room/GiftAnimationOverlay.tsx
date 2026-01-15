@@ -30,6 +30,16 @@ export default function GiftAnimationOverlay({ latestGift, currentUser }: GiftAn
             setActiveGift(giftData);
             setAnimationKey(prev => prev + 1); // Re-trigger animation
 
+            if (giftData.soundUrl) {
+                try {
+                    const audio = new Audio(giftData.soundUrl);
+                    audio.play().catch(e => console.error("Error playing gift sound:", e));
+                } catch (e) {
+                    console.error("Failed to create Audio object for gift sound:", e);
+                }
+            }
+
+
             const timer = setTimeout(() => {
                 setActiveGift(null);
             }, 4000); // Animation duration + buffer

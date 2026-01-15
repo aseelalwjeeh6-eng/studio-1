@@ -8,7 +8,7 @@ import { ref, onValue, push, set, off } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { User } from '@/app/providers';
-import { Trash2, Send, Mic, MicOff, MessageCircle } from 'lucide-react';
+import { Trash2, Send, Mic, MicOff, MessageCircle, Gift } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,7 +93,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, onFocus, onBlur, onSend, isSending }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement>; onFocus: () => void; onBlur: () => void; onSend: (value: string) => Promise<void>; isSending: boolean; }) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, onFocus, onBlur, onSend, isSending, onOpenGiftShop }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement>; onFocus: () => void; onBlur: () => void; onSend: (value: string) => Promise<void>; isSending: boolean; onOpenGiftShop: () => void; }) => {
     const [newMessage, setNewMessage] = useState('');
 
     const handleSendMessage = async (e: React.FormEvent) => {
@@ -111,6 +111,9 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, on
                         {isMuted ? <MicOff className="w-5 h-5 text-destructive" /> : <Mic className="w-5 h-5 text-accent" />}
                     </Button>
                 )}
+                 <Button type="button" size="icon" variant="ghost" onClick={onOpenGiftShop} className="h-12 w-12 flex-shrink-0 text-pink-400 hover:text-pink-500 hover:bg-pink-400/10">
+                    <Gift className="h-6 w-6" />
+                </Button>
                 <Input
                     ref={inputRef}
                     type="text"

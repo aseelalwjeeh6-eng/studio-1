@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -18,13 +18,16 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { SeatedMember } from './RoomClient';
 
 interface GiftShopDialogProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     recipientName: string;
     onSendGift: (recipientName: string, giftId: string) => Promise<void>;
+    seatedMembers: SeatedMember[];
 }
 
 const categories: { id: GiftCategory; name: string }[] = [
@@ -35,22 +38,29 @@ const categories: { id: GiftCategory; name: string }[] = [
     { id: 'exclusive', name: 'حصرية' },
 ];
 
-export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, onSendGift }: GiftShopDialogProps) {
-    const { user, setUser } = useUserSession();
+export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, onSendGift, seatedMembers }: GiftShopDialogProps) {
+    const { user } = useUserSession();
     const [selectedGift, setSelectedGift] = useState<Gift | null>(null);
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
+    const [internalRecipient, setInternalRecipient] = useState(recipientName);
+
+    useEffect(() => {
+        if (isOpen) {
+            setInternalRecipient(recipientName);
+            setError('');
+        }
+    }, [recipientName, isOpen]);
 
     const handleSend = async () => {
-        if (!selectedGift || !user) return;
+        if (!selectedGift || !user || !internalRecipient) return;
         
         setError('');
         setIsSending(true);
         try {
-            await onSendGift(recipientName, selectedGift.id);
-            // The balance will be updated via the listener in MainHeader
-            setSelectedGift(null); // Close confirmation dialog
-            onOpenChange(false); // Close gift shop
+            await onSendGift(internalRecipient, selectedGift.id);
+            setSelectedGift(null);
+            onOpenChange(false);
         } catch (e: any) {
             setError(e.message);
             console.error("Failed to send gift:", e);
@@ -65,10 +75,30 @@ export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, on
                 <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
                     <DialogHeader className="p-6 pb-4 border-b">
                         <DialogTitle className="text-2xl">متجر الهدايا</DialogTitle>
-                        <DialogDescription>
-                            <span>إرسال هدية إلى <span className="font-bold text-accent">{recipientName}</span></span>
-                        </DialogDescription>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                         {internalRecipient ? (
+                            <DialogDescription>
+                                <span>إرسال هدية إلى <span className="font-bold text-accent">{internalRecipient}</span></span>
+                            </DialogDescription>
+                         ) : (
+                            <DialogDescription>اختر مستلمًا من القائمة أدناه.</DialogDescription>
+                         )}
+
+                        {!recipientName && seatedMembers.length > 0 && (
+                            <Select onValueChange={setInternalRecipient} defaultValue={internalRecipient}>
+                                <SelectTrigger className="w-full mt-2 bg-input">
+                                    <SelectValue placeholder="اختر مستلم الهدية..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {seatedMembers.filter(m => m.name !== user?.name).map(member => (
+                                        <SelectItem key={member.name} value={member.name}>
+                                            {member.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
                             <Coins className="text-amber-400" />
                             <span>رصيدك: <span className="font-bold text-foreground">{user?.coins?.toLocaleString() || 0}</span></span>
                         </div>
@@ -90,6 +120,10 @@ export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, on
                                                 <div 
                                                     key={gift.id}
                                                     onClick={() => {
+                                                        if (!internalRecipient) {
+                                                            setError("الرجاء اختيار مستلم للهدية أولاً.");
+                                                            return;
+                                                        }
                                                         if((user?.coins || 0) >= gift.cost) {
                                                             setSelectedGift(gift)
                                                         } else {
@@ -121,13 +155,13 @@ export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, on
                         <AlertDialogHeader>
                             <AlertDialogTitle>تأكيد إرسال الهدية</AlertDialogTitle>
                             <AlertDialogDescription>
-                                هل أنت متأكد من أنك تريد إرسال هدية "{selectedGift.name}" إلى {recipientName} مقابل {selectedGift.cost.toLocaleString()} كوينز؟
+                                هل أنت متأكد من أنك تريد إرسال هدية "{selectedGift.name}" إلى {internalRecipient} مقابل {selectedGift.cost.toLocaleString()} كوينز؟
                             </AlertDialogDescription>
                              {error && <p className="text-sm text-destructive">{error}</p>}
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel disabled={isSending}>إلغاء</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleSend} disabled={isSending}>
+                            <AlertDialogAction onClick={handleSend} disabled={isSending || !internalRecipient}>
                                 {isSending ? <Loader2 className="animate-spin" /> : "نعم، إرسال"}
                             </AlertDialogAction>
                         </AlertDialogFooter>

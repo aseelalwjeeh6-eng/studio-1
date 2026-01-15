@@ -437,11 +437,19 @@ export const sendGift = async (senderName: string, recipientName: string, giftId
 
     if (!gift) throw new Error('الهدية غير موجودة.');
 
-    const senderSnapshot = await get(senderRef);
+    const [senderSnapshot, recipientSnapshot] = await Promise.all([
+        get(senderRef),
+        get(recipientRef)
+    ]);
+    
     const sender = senderSnapshot.val() as AppUser;
+    const recipient = recipientSnapshot.val() as AppUser;
 
     if (!sender || (sender.coins || 0) < gift.cost) {
         throw new Error('ليس لديك كوينزات كافية لإرسال هذه الهدية.');
+    }
+     if (!recipient) {
+        throw new Error('المستخدم المستلم غير موجود.');
     }
 
     const updates: { [key: string]: any } = {};
@@ -460,17 +468,20 @@ export const sendGift = async (senderName: string, recipientName: string, giftId
     updates[`users/${senderName}/coins`] = newSenderCoins;
     updates[`users/${senderName}/transactions/${senderTxId}`] = senderTx;
 
-    // 2. Add transaction to recipient
+    // 2. Add coins and transaction to recipient
+    const newRecipientCoins = (recipient.coins || 0) + gift.cost;
     const recipientTxId = uuidv4();
     const recipientTx: Transaction = {
         id: recipientTxId,
         type: 'gift_received',
-        amount: 0, // No coin value, just a record
+        amount: gift.cost,
         timestamp: Date.now(),
         from: senderName,
         description: `استلام هدية (${gift.name}) من ${senderName}`,
     };
+    updates[`users/${recipientName}/coins`] = newRecipientCoins;
     updates[`users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
+
 
     // 3. Push gift event to room
     const giftEvent = {
@@ -480,9 +491,8 @@ export const sendGift = async (senderName: string, recipientName: string, giftId
         recipientName,
         timestamp: serverTimestamp(),
     };
-    const giftStreamPath = `rooms/${roomId}/giftStream`;
-    const newGiftKey = push(ref(database, giftStreamPath)).key;
-    updates[`${giftStreamPath}/${newGiftKey}`] = giftEvent;
+    const giftStreamPath = `rooms/${roomId}/giftStream/${push(ref(database, `rooms/${roomId}/giftStream`)).key}`;
+    updates[giftStreamPath] = giftEvent;
     
     // Perform all updates
     await update(ref(database), updates);
