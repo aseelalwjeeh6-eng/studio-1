@@ -1367,6 +1367,8 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   
   const [isSeated, setIsSeated] = useState(false);
   const [videoMode, setVideoMode] = useState(false);
+
+  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
   
   const sendSystemMessage = useCallback((text: string) => {
     if (!roomId || !user) return;
@@ -1526,6 +1528,24 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       </div>
     );
   }
+
+  if (!livekitUrl) {
+    return (
+        <div className="flex h-screen items-center justify-center text-center p-4 bg-background">
+            <div className='max-w-md bg-card/50 p-8 rounded-lg shadow-lg backdrop-blur-lg border border-destructive'>
+                <h1 className="text-2xl font-bold text-destructive mb-4">خطأ في الإعدادات</h1>
+                <p className="text-foreground">
+                    خادم الوسائط (LiveKit) غير مُهيأ. يرجى التأكد من إضافة المتغير
+                    <code className="bg-muted text-accent font-mono p-1 rounded-md mx-1">LIVEKIT_URL</code>
+                    إلى ملف البيئة الخاص بك.
+                </p>
+                <Button onClick={() => router.push('/lobby')} className="mt-6 w-full">
+                    العودة إلى الردهة
+                </Button>
+            </div>
+        </div>
+    );
+  }
   
   if (!token) {
     return (
@@ -1539,7 +1559,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
   return (
     <LiveKitRoom
       token={token}
-      serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL!}
+      serverUrl={livekitUrl}
       user={user}
       isSeated={isSeated}
       videoMode={videoMode}

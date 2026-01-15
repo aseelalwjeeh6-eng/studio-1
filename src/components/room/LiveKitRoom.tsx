@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -47,7 +48,11 @@ const LiveKitRoom = ({ token, serverUrl, user, isSeated, videoMode, children }: 
       token={token}
       serverUrl={serverUrl}
       connect={true}
-      connectOptions={{ autoSubscribe: true }}
+      connectOptions={{ 
+          autoSubscribe: true,
+          // Increase signal connection timeout to 20 seconds for more resilience
+          expSignalConnectTimeout: 20000 
+        }}
       data-lk-theme="default"
     >
       <RoomLayoutWithConnectivity isSeated={isSeated} videoMode={videoMode}>
