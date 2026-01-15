@@ -549,7 +549,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 id: newMsgRef.key!,
                 sender: user.name,
                 text: text,
-                timestamp: Date.now(),
+                timestamp: serverTimestamp() as any,
             };
             await set(newMsgRef, messageData);
             
@@ -936,6 +936,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       sendSystemMessage(`🎁 أرسل ${user.name} هدية "${gift.name}" إلى ${recipientName} بقيمة ${gift.cost.toLocaleString()} كوينز`);
     }
   };
+
 
   if (!isAuthenticated) {
     return (
@@ -1417,7 +1418,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       id: newMsgRef.key!,
       sender: 'System',
       text,
-      timestamp: Date.now(),
+      timestamp: serverTimestamp() as any,
       isSystemMessage: true,
     };
     set(newMsgRef, messageData);
@@ -1585,10 +1586,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       user={user}
       isSeated={isSeated}
       videoMode={videoMode}
-      connectOptions={{
-        autoSubscribe: true,
-        expSignalConnectTimeout: 20000,
-      }}
     >
       <RoomLayout 
         roomId={roomId} 
