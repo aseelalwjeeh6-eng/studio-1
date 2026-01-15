@@ -50,6 +50,7 @@ export type User = {
   name: string;
   avatarId?: string;
   generatedAvatars?: any[];
+  coins?: number;
 };
 type UserContextType = {
   user: User | null;

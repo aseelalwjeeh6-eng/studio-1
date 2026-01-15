@@ -15,7 +15,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import useUserSession from '@/hooks/use-user-session';
-import { Bell, Users, Mail, UserPlus, UserCheck, UserX, LogIn } from 'lucide-react';
+import { Bell, Users, Mail, UserPlus, UserCheck, UserX, LogIn, Coins } from 'lucide-react';
 import { database } from '@/lib/firebase';
 import { ref, onValue, off, remove, update } from 'firebase/database';
 import { FriendRequest, RoomInvitation, acceptFriendRequest, rejectFriendRequest } from '@/lib/firebase-service';
@@ -119,6 +119,7 @@ export function MainHeader() {
 
     const requestsRef = ref(database, `users/${user.name}/friendRequests`);
     const invitesRef = ref(database, `users/${user.name}/invitations`);
+    const coinsRef = ref(database, `users/${user.name}/coins`);
 
     const requestsListener = onValue(requestsRef, (snapshot) => {
       setFriendRequests(snapshot.exists() ? Object.values(snapshot.val()) : []);
@@ -127,12 +128,20 @@ export function MainHeader() {
     const invitesListener = onValue(invitesRef, (snapshot) => {
       setInvitations(snapshot.exists() ? Object.values(snapshot.val()) : []);
     });
+    
+    const coinsListener = onValue(coinsRef, (snapshot) => {
+        const newCoins = snapshot.val();
+        if (newCoins !== null) {
+            setUser(prev => prev ? { ...prev, coins: newCoins } : null);
+        }
+    });
 
     return () => {
       off(requestsRef, 'value', requestsListener);
       off(invitesRef, 'value', invitesListener);
+      off(coinsRef, 'value', coinsListener);
     };
-  }, [user]);
+  }, [user?.name, setUser]);
   
   const handleLogout = () => {
     setUser(null);
@@ -219,7 +228,7 @@ export function MainHeader() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
@@ -300,23 +309,33 @@ export function MainHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
            )}
+          
+          <div className="flex items-center gap-3">
+              {user && (
+                <div className="hidden sm:flex items-center gap-3">
+                    <div className="flex items-center gap-1 bg-background/50 rounded-full px-3 py-1 border border-accent/20">
+                        <Coins className="w-4 h-4 text-amber-400" />
+                        <span className="font-bold text-sm text-foreground">
+                            {user.coins?.toLocaleString() || 0}
+                        </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      مرحباً،{' '}
+                      <span className="font-bold text-foreground">{user.name}</span>
+                    </div>
+                </div>
+              )}
 
-          {user && (
-            <div className="text-sm text-muted-foreground hidden md:block">
-              مرحباً،{' '}
-              <span className="font-bold text-foreground">{user.name}</span>
-            </div>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            className="rounded-full"
-            aria-label="تسجيل الخروج"
-          >
-            <Power className="h-5 w-5" />
-          </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleLogout}
+                className="rounded-full"
+                aria-label="تسجيل الخروج"
+              >
+                <Power className="h-5 w-5" />
+              </Button>
+          </div>
         </div>
       </div>
       <PwaInstallBanner />

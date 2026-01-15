@@ -1,7 +1,7 @@
 
 'use client';
 
-import { Armchair, MicOff, User, LogOut, ShieldX, Crown, ShieldCheck, ArrowDownUp, UserPlus } from 'lucide-react';
+import { Armchair, MicOff, User, LogOut, ShieldX, Crown, ShieldCheck, ArrowDownUp, UserPlus, Gift } from 'lucide-react';
 import { SeatedMember } from './RoomClient';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -44,6 +44,7 @@ const Seat = ({
     room,
     currentUserFriends,
     currentUserRequests,
+    onSendGift,
 }: { 
     seatId: number;
     seatedMember?: SeatedMember;
@@ -62,6 +63,7 @@ const Seat = ({
     room?: Room;
     currentUserFriends: AppUser[];
     currentUserRequests: AppUser[];
+    onSendGift: (recipientName: string) => void;
 }) => {
     const isOccupied = !!seatedMember;
     const isCurrentUserSeatedHere = isOccupied && seatedMember.name === currentUser.name;
@@ -105,8 +107,15 @@ const Seat = ({
 
     const controls = (
         <DropdownMenuContent>
+            {seatedMember && !isCurrentUserSeatedHere && (
+                 <DropdownMenuItem onClick={() => onSendGift(seatedMember.name)}>
+                    <Gift className="me-2 text-pink-400" /> إرسال هدية
+                </DropdownMenuItem>
+            )}
+
             {(isHost || (isCurrentUserModerator && !isMemberModerator)) && participant && !isCurrentUserSeatedHere && (
                 <>
+                    {canAddFriend && <DropdownMenuSeparator />}
                     {isHost && !isMemberHost && (
                         <>
                             {isMemberModerator ? (
@@ -269,6 +278,7 @@ const Seats = ({
     room,
     currentUserFriends,
     currentUserRequests,
+    onSendGift,
 }: { 
     seatedMembers: SeatedMember[],
     hostName: string,
@@ -284,6 +294,7 @@ const Seats = ({
     room?: Room;
     currentUserFriends: AppUser[];
     currentUserRequests: AppUser[];
+    onSendGift: (recipientName: string) => void;
 }) => {
     const totalSeats = 4;
   
@@ -331,6 +342,7 @@ const Seats = ({
                         room={room}
                         currentUserFriends={currentUserFriends}
                         currentUserRequests={currentUserRequests}
+                        onSendGift={onSendGift}
                     />
                 ))}
             </div>

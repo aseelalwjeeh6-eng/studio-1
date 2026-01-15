@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import useUserSession from '@/hooks/use-user-session';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
-import { loginUser, registerUser, AppUser } from '@/lib/firebase-service';
+import { loginUser, registerUser, AppUser, claimDailyLogin } from '@/lib/firebase-service';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -64,6 +64,11 @@ const LoginForm = ({ onLoginSuccess }: { onLoginSuccess: (user: AppUser) => void
         setIsLoading(true);
         try {
             const loggedInUser = await loginUser(name.trim(), password);
+            const dailyLoginResult = await claimDailyLogin(loggedInUser.name);
+            if (dailyLoginResult.success && dailyLoginResult.newBalance) {
+                console.log(dailyLoginResult.message);
+                loggedInUser.coins = dailyLoginResult.newBalance;
+            }
             onLoginSuccess(loggedInUser);
         } catch (error: any) {
             setError(error.message || "فشل تسجيل الدخول.");
@@ -203,7 +208,11 @@ export default function LoginPage() {
   }, [isLoaded, user, router]);
 
   const handleAuthSuccess = (authenticatedUser: AppUser) => {
-    setUser(authenticatedUser);
+    setUser({
+        name: authenticatedUser.name,
+        avatarId: authenticatedUser.avatarId,
+        coins: authenticatedUser.coins,
+    });
     router.push('/lobby');
   };
 

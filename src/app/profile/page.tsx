@@ -6,7 +6,7 @@ import { useEffect, useState, useTransition, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
-import { User as UserIcon, Loader2, CheckCircle, Image as ImageIcon, Sparkles, Wand2, User, Wallpaper, Trash2 } from 'lucide-react';
+import { User as UserIcon, Loader2, CheckCircle, Image as ImageIcon, Sparkles, Wand2, User, Wallpaper, Trash2, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { upsertUser, getUserData } from '@/lib/firebase-service';
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AppUser } from '@/lib/firebase-service';
 import { Separator } from '@/components/ui/separator';
+import CoinManagementDialog from '@/components/profile/CoinManagementDialog';
 
 export default function ProfilePage() {
   const { user, setUser, isLoaded } = useUserSession();
@@ -28,6 +29,8 @@ export default function ProfilePage() {
   const [avatarPrompt, setAvatarPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const [isCoinManagementOpen, setIsCoinManagementOpen] = useState(false);
+
 
   useEffect(() => {
     if (isLoaded && !user) {
@@ -36,14 +39,18 @@ export default function ProfilePage() {
     }
     if (user) {
       setCurrentAvatarId(user.avatarId);
-      // Fetch full user data to get generated avatars
+      // Fetch full user data to get generated avatars and coins
       getUserData(user.name).then(fullUser => {
-        if (fullUser?.generatedAvatars) {
-          setGeneratedAvatars(fullUser.generatedAvatars);
+        if (fullUser) {
+          if (fullUser.generatedAvatars) {
+            setGeneratedAvatars(fullUser.generatedAvatars);
+          }
+          // Update user session with full data
+          setUser(prev => ({...prev, ...fullUser}));
         }
       });
     }
-  }, [isLoaded, user, router]);
+  }, [isLoaded, user?.name, router, setUser]);
 
   const handleUpdateAvatar = (imageToUpdate: ImagePlaceholder) => {
     if (!user || !imageToUpdate) return;
@@ -131,6 +138,7 @@ export default function ProfilePage() {
 
 
   return (
+    <>
     <div className="flex flex-col items-center justify-center pt-8 gap-12">
       <Card className="w-full max-w-sm bg-card/50 backdrop-blur-lg border-accent/20 text-center shadow-lg">
         <CardHeader className="flex flex-col items-center">
@@ -143,6 +151,13 @@ export default function ProfilePage() {
           <CardTitle className="text-4xl font-headline font-bold text-foreground">{user.name}</CardTitle>
           <CardDescription className="text-lg text-muted-foreground">"عشاق السينما"</CardDescription>
         </CardHeader>
+        <CardContent>
+            <Button onClick={() => setIsCoinManagementOpen(true)} className="w-full">
+                <Coins className="me-2" />
+                <span>{user.coins?.toLocaleString() || 0}</span>
+                <span className="ms-2">إدارة الكوينزات</span>
+            </Button>
+        </CardContent>
       </Card>
       
       <Card className="w-full max-w-4xl bg-card/50 backdrop-blur-lg border-accent/20 shadow-lg">
@@ -295,5 +310,11 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
     </div>
+    <CoinManagementDialog 
+        isOpen={isCoinManagementOpen} 
+        onOpenChange={setIsCoinManagementOpen} 
+        user={user}
+    />
+    </>
   );
 }

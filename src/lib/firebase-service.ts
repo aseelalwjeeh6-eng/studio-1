@@ -11,9 +11,12 @@ import {
   equalTo,
   serverTimestamp,
   remove,
+  runTransaction,
 } from 'firebase/database';
 import { v4 as uuidv4 } from 'uuid';
 import { PlaceHolderImages } from './placeholder-images';
+import { Gift, Gifts } from './gifts';
+import { format } from 'date-fns';
 
 // A simple (and not cryptographically secure) hashing function for demonstration.
 // In a real-world app, use a library like bcryptjs.
@@ -49,6 +52,16 @@ export interface FriendRequest {
   read?: boolean;
 }
 
+export interface Transaction {
+    id: string;
+    type: 'purchase' | 'daily' | 'transfer_sent' | 'transfer_received' | 'gift_sent' | 'gift_received' | 'initial' | 'fee';
+    amount: number; // positive for credit, negative for debit
+    timestamp: number;
+    from?: string;
+    to?: string;
+    description: string;
+}
+
 export interface AppUser {
   name: string;
   password?: string; // Hashed password
@@ -60,6 +73,9 @@ export interface AppUser {
   friendRequests?: { [key: string]: FriendRequest };
   invitations?: { [key: string]: RoomInvitation };
   generatedAvatars?: { id: string; imageUrl: string; description: string; imageHint: string }[];
+  coins?: number;
+  lastDailyLogin?: string; // YYYY-MM-DD
+  transactions?: { [key: string]: Transaction };
 }
 
 
@@ -86,11 +102,23 @@ export const registerUser = async (userData: Omit<AppUser, 'password'> & { passw
 
   const hashedPassword = await simpleHash(password);
   
+  const initialCoins = 50000;
+  const transactionId = uuidv4();
+  const initialTransaction: Transaction = {
+      id: transactionId,
+      type: 'initial',
+      amount: initialCoins,
+      timestamp: Date.now(),
+      description: 'مكافأة تسجيل مستخدم جديد',
+  };
+  
   const newUser: AppUser = {
     ...userData,
     name: name,
     password: hashedPassword,
     avatarId: avatarId || 'avatar1',
+    coins: initialCoins,
+    transactions: { [transactionId]: initialTransaction },
   };
 
   await set(userRef, newUser);
@@ -364,4 +392,192 @@ export const createRoom = async ({ hostName }: CreateRoomInput): Promise<{ id: s
     };
     await set(roomRef, roomData);
     return { id: newRoomId };
+};
+
+// --- Gifts & Coins System ---
+
+export const claimDailyLogin = async (username: string): Promise<{ success: boolean; message: string; newBalance?: number }> => {
+    const userRef = getUserRef(database, username);
+    const today = format(new Date(), 'yyyy-MM-dd');
+
+    return runTransaction(userRef, (user: AppUser | null) => {
+        if (user) {
+            if (user.lastDailyLogin === today) {
+                // Abort transaction by returning undefined
+                return;
+            }
+            user.coins = (user.coins || 0) + 10;
+            user.lastDailyLogin = today;
+
+            const transactionId = uuidv4();
+            const dailyTransaction: Transaction = {
+                id: transactionId,
+                type: 'daily',
+                amount: 10,
+                timestamp: Date.now(),
+                description: 'مكافأة تسجيل الدخول اليومي',
+            };
+            if (!user.transactions) user.transactions = {};
+            user.transactions[transactionId] = dailyTransaction;
+        }
+        return user;
+    }).then(result => {
+        if (!result.committed) {
+            return { success: false, message: 'لقد استلمت مكافأتك اليومية بالفعل.' };
+        }
+        const updatedUser = result.snapshot.val();
+        return { success: true, message: 'تمت إضافة 10 كوينز إلى رصيدك!', newBalance: updatedUser.coins };
+    });
+};
+
+export const sendGift = async (senderName: string, recipientName: string, giftId: string, roomId: string) => {
+    const senderRef = getUserRef(database, senderName);
+    const recipientRef = getUserRef(database, recipientName);
+    const gift = Gifts.find(g => g.id === giftId);
+
+    if (!gift) throw new Error('الهدية غير موجودة.');
+
+    const senderSnapshot = await get(senderRef);
+    const sender = senderSnapshot.val() as AppUser;
+
+    if (!sender || (sender.coins || 0) < gift.cost) {
+        throw new Error('ليس لديك كوينزات كافية لإرسال هذه الهدية.');
+    }
+
+    const updates: { [key: string]: any } = {};
+
+    // 1. Deduct coins from sender and add transaction
+    const newSenderCoins = sender.coins! - gift.cost;
+    const senderTxId = uuidv4();
+    const senderTx: Transaction = {
+        id: senderTxId,
+        type: 'gift_sent',
+        amount: -gift.cost,
+        timestamp: Date.now(),
+        to: recipientName,
+        description: `إرسال هدية (${gift.name}) إلى ${recipientName}`,
+    };
+    updates[`/users/${senderName}/coins`] = newSenderCoins;
+    updates[`/users/${senderName}/transactions/${senderTxId}`] = senderTx;
+
+    // 2. Add transaction to recipient
+    const recipientTxId = uuidv4();
+    const recipientTx: Transaction = {
+        id: recipientTxId,
+        type: 'gift_received',
+        amount: 0, // No coin value, just a record
+        timestamp: Date.now(),
+        from: senderName,
+        description: `استلام هدية (${gift.name}) من ${senderName}`,
+    };
+    updates[`/users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
+
+    // 3. Push gift event to room
+    const giftEvent = {
+        id: uuidv4(),
+        giftId: gift.id,
+        senderName,
+        recipientName,
+        timestamp: serverTimestamp(),
+    };
+    const giftEventRef = push(ref(database, `rooms/${roomId}/giftStream`));
+    updates[giftEventRef.key!] = giftEvent; // This path is relative to the root `rooms/${roomId}/giftStream`
+    
+    // Perform all updates
+    await update(ref(database), updates);
+
+    // Return the new coin balance for the sender
+    return newSenderCoins;
+};
+
+export const transferCoins = async (senderName: string, recipientName: string, amount: number): Promise<number> => {
+    if (amount <= 0) throw new Error('يجب أن يكون المبلغ أكبر من صفر.');
+    if (senderName === recipientName) throw new Error('لا يمكنك تحويل الكوينزات إلى نفسك.');
+
+    const senderRef = getUserRef(database, senderName);
+    const recipientRef = getUserRef(database, recipientName);
+
+    const senderSnapshot = await get(senderRef);
+    const sender = senderSnapshot.val() as AppUser;
+
+    const recipientSnapshot = await get(recipientRef);
+    if (!recipientSnapshot.exists()) throw new Error('المستخدم الذي تحاول التحويل له غير موجود.');
+    const recipient = recipientSnapshot.val() as AppUser;
+
+    const fee = Math.ceil(amount * 0.10);
+    const totalDeduction = amount + fee;
+
+    if (!sender || (sender.coins || 0) < totalDeduction) {
+        throw new Error(`ليس لديك كوينزات كافية. المبلغ المطلوب: ${amount} + رسوم ${fee} = ${totalDeduction}`);
+    }
+
+    const updates: { [key: string]: any } = {};
+
+    // Sender updates
+    const newSenderCoins = sender.coins! - totalDeduction;
+    const senderTxId = uuidv4();
+    const senderTx: Transaction = {
+        id: senderTxId,
+        type: 'transfer_sent',
+        amount: -amount,
+        timestamp: Date.now(),
+        to: recipientName,
+        description: `تحويل ${amount} كوينز إلى ${recipientName}`,
+    };
+    const feeTxId = uuidv4();
+    const feeTx: Transaction = {
+        id: feeTxId,
+        type: 'fee',
+        amount: -fee,
+        timestamp: Date.now(),
+        description: `رسوم تحويل 10%`,
+    };
+    updates[`/users/${senderName}/coins`] = newSenderCoins;
+    updates[`/users/${senderName}/transactions/${senderTxId}`] = senderTx;
+    updates[`/users/${senderName}/transactions/${feeTxId}`] = feeTx;
+
+    // Recipient updates
+    const newRecipientCoins = (recipient.coins || 0) + amount;
+    const recipientTxId = uuidv4();
+    const recipientTx: Transaction = {
+        id: recipientTxId,
+        type: 'transfer_received',
+        amount: amount,
+        timestamp: Date.now(),
+        from: senderName,
+        description: `استلام ${amount} كوينز من ${senderName}`,
+    };
+    updates[`/users/${recipientName}/coins`] = newRecipientCoins;
+    updates[`/users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
+    
+    await update(ref(database), updates);
+
+    return newSenderCoins;
+};
+
+export const purchaseCoins = async (username: string, packageId: string, coinsToAdd: number): Promise<number> => {
+    const userRef = getUserRef(database, username);
+    
+    return runTransaction(userRef, (user: AppUser | null) => {
+        if (user) {
+            user.coins = (user.coins || 0) + coinsToAdd;
+            const transactionId = uuidv4();
+            const purchaseTx: Transaction = {
+                id: transactionId,
+                type: 'purchase',
+                amount: coinsToAdd,
+                timestamp: Date.now(),
+                description: `شراء حزمة كوينزات (${packageId})`,
+            };
+            if (!user.transactions) user.transactions = {};
+            user.transactions[transactionId] = purchaseTx;
+        }
+        return user;
+    }).then(result => {
+        if (!result.committed) {
+            throw new Error('فشل إتمام عملية الشراء. يرجى المحاولة مرة أخرى.');
+        }
+        const updatedUser = result.snapshot.val();
+        return updatedUser.coins;
+    });
 };

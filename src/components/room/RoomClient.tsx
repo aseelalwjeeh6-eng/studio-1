@@ -24,7 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import VideoConference from './VideoConference';
-import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends, createRoom } from '@/lib/firebase-service';
+import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends, createRoom, sendGift } from '@/lib/firebase-service';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,8 @@ import { ScrollArea } from '../ui/scroll-area';
 import { Switch } from '../ui/switch';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import GiftShopDialog from './GiftShopDialog';
+import GiftAnimationOverlay from './GiftAnimationOverlay';
 
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -226,6 +228,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [tempPin, setTempPin] = useState('');
   const [tempIsPrivate, setTempIsPrivate] = useState(false);
 
+  const [isGiftShopOpen, setIsGiftShopOpen] = useState(false);
+  const [giftingTo, setGiftingTo] = useState('');
+
+  const [giftStream, setGiftStream] = useState<any[]>([]);
+
   
   const { room } = useLiveKitRoom();
   const { localParticipant } = useLocalParticipant();
@@ -392,6 +399,18 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         
         const videoModeRef = ref(database, `rooms/${roomId}/videoMode`);
         listeners.push(onValue(videoModeRef, (snapshot) => setVideoMode(snapshot.val() || false)));
+
+        const giftStreamRef = ref(database, `rooms/${roomId}/giftStream`);
+        listeners.push(onValue(giftStreamRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const allGifts = Object.values(snapshot.val());
+                const latestGift = allGifts[allGifts.length - 1] as any;
+                 // Only trigger for new gifts by checking timestamp
+                if (giftStream.length === 0 || (latestGift && latestGift.id !== giftStream[giftStream.length -1]?.id)) {
+                    setGiftStream(prev => [...prev, latestGift]);
+                }
+            }
+        }));
     };
 
     setupListeners();
@@ -622,7 +641,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         id: video.id.videoId,
         videoId: video.id.videoId,
         title: video.snippet.title,
-        thumbnail: video.snippet.thumbnails.high.url,
+        thumbnail: video.snippet.high.url,
       };
       const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
       set(playlistRef, newItem);
@@ -876,6 +895,17 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const handleOpenGiftShop = (recipientName: string) => {
+      setGiftingTo(recipientName);
+      setIsGiftShopOpen(true);
+  }
+
+  const handleSendGift = async (recipientName: string, giftId: string) => {
+    if(!user) throw new Error("User not found");
+    const newBalance = await sendGift(user.name, recipientName, giftId, roomId);
+    // The user context will update via the listener in MainHeader
+  };
+
   if (!isAuthenticated) {
     return (
         <Dialog open={!isAuthenticated} onOpenChange={(open) => { if(!open) router.push('/lobby')}}>
@@ -910,6 +940,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
+
+        <GiftAnimationOverlay latestGift={giftStream[giftStream.length -1]} currentUser={user.name} />
 
         <div className="relative z-10 flex h-full w-full flex-col">
              <RoomHeader 
@@ -964,6 +996,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   room={room}
                                   currentUserFriends={friendData.friends}
                                   currentUserRequests={friendData.requests}
+                                  onSendGift={handleOpenGiftShop}
                               />
                           </div>
                           <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0">
@@ -997,6 +1030,12 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             <AudioConference />
         </div>
     
+    <GiftShopDialog
+        isOpen={isGiftShopOpen}
+        onOpenChange={setIsGiftShopOpen}
+        recipientName={giftingTo}
+        onSendGift={handleSendGift}
+    />
 
     <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
         <DialogContent className="max-w-md">
