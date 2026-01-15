@@ -102,62 +102,72 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (canControl || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
       return;
     }
-
+  
     let currentPlayerTime = 0;
+    let localPlayer;
+  
     try {
-        if (ytPlayerRef.current) {
-            currentPlayerTime = ytPlayerRef.current.getCurrentTime();
-        } else if (htmlPlayerRef.current) {
-            currentPlayerTime = htmlPlayerRef.current.currentTime;
-        } else {
-            return; // No active player
-        }
+      if (ytPlayerRef.current) {
+        currentPlayerTime = ytPlayerRef.current.getCurrentTime();
+        localPlayer = ytPlayerRef.current;
+      } else if (htmlPlayerRef.current) {
+        currentPlayerTime = htmlPlayerRef.current.currentTime;
+        localPlayer = htmlPlayerRef.current;
+      } else {
+        return; // No active player
+      }
     } catch (e) {
-        console.warn("Sync: Could not get current player time", e);
-        return;
+      console.warn("Sync: Could not get current player time", e);
+      return;
     }
-
+  
     const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
     const timeDifference = serverTime - currentPlayerTime;
-
+  
     // Apply Smart Correction Algorithm
-    if (Math.abs(timeDifference) > 2) { // Hard Sync for large differences
-      try {
-        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(serverTime, true);
-        if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = serverTime;
-        console.log(`Hard Sync: Correcting by ${timeDifference.toFixed(2)}s`);
-      } catch (e) { console.warn("Hard Sync failed", e); }
-    } else if (Math.abs(timeDifference) > 0.5) { // Soft Sync for small, noticeable differences
-        // Not implemented via playbackRate for YouTube as it can be jarring.
-        // Relying on frequent progress updates and hard sync for larger drifts is more stable.
-        try {
-            if (playerState.isPlaying) {
-                if (ytPlayerRef.current) ytPlayerRef.current.seekTo(serverTime, true);
-                if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = serverTime;
-            }
-        } catch (e) { console.warn("Soft Sync Seek failed", e); }
-    }
-    // Differences < 0.5s are ignored (tolerance zone)
-
-    // Sync play/pause state
     try {
-        if (ytPlayerRef.current) {
-            const ytState = ytPlayerRef.current.getPlayerState();
-            if (playerState.isPlaying && ytState !== 1) { // Is playing on server, but not locally
-                ytPlayerRef.current.playVideo();
-            } else if (!playerState.isPlaying && ytState === 1) { // Is paused on server, but playing locally
-                ytPlayerRef.current.pauseVideo();
-            }
+      if (Math.abs(timeDifference) > 2) { // Hard Sync for large differences
+        if (localPlayer === ytPlayerRef.current) (localPlayer as YouTubePlayer).seekTo(serverTime, true);
+        else (localPlayer as HTMLVideoElement).currentTime = serverTime;
+        console.log(`Hard Sync: Correcting by ${timeDifference.toFixed(2)}s`);
+      } else if (Math.abs(timeDifference) > 0.5) { // Soft Sync for small, noticeable differences
+         // Soft sync by slightly changing playback rate
+        const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
+        if (localPlayer === ytPlayerRef.current) {
+            const currentRate = (localPlayer as YouTubePlayer).getPlaybackRate();
+            if (currentRate !== playbackRate) (localPlayer as YouTubePlayer).setPlaybackRate(playbackRate);
+        } else {
+            const currentRate = (localPlayer as HTMLVideoElement).playbackRate;
+            if (currentRate !== playbackRate) (localPlayer as HTMLVideoElement).playbackRate = playbackRate;
         }
-        if (htmlPlayerRef.current) {
-            if (playerState.isPlaying && htmlPlayerRef.current.paused) {
-                htmlPlayerRef.current.play().catch(console.error);
-            } else if (!playerState.isPlaying && !htmlPlayerRef.current.paused) {
-                htmlPlayerRef.current.pause();
-            }
+      } else { // Tolerance Zone
+        // Reset playback rate if it was adjusted
+         if (localPlayer === ytPlayerRef.current) {
+            if ((localPlayer as YouTubePlayer).getPlaybackRate() !== 1) (localPlayer as YouTubePlayer).setPlaybackRate(1);
+        } else {
+            if ((localPlayer as HTMLVideoElement).playbackRate !== 1) (localPlayer as HTMLVideoElement).playbackRate = 1;
         }
-    } catch (e) { console.warn("Play/Pause Sync failed", e); }
-
+      }
+  
+      // Sync play/pause state
+      if (localPlayer === ytPlayerRef.current) {
+        const ytState = (localPlayer as YouTubePlayer).getPlayerState();
+        if (playerState.isPlaying && ytState !== 1) { // Is playing on server, but not locally
+          (localPlayer as YouTubePlayer).playVideo();
+        } else if (!playerState.isPlaying && ytState === 1) { // Is paused on server, but playing locally
+          (localPlayer as YouTubePlayer).pauseVideo();
+        }
+      } else {
+        if (playerState.isPlaying && (localPlayer as HTMLVideoElement).paused) {
+          (localPlayer as HTMLVideoElement).play().catch(console.error);
+        } else if (!playerState.isPlaying && !(localPlayer as HTMLVideoElement).paused) {
+          (localPlayer as HTMLVideoElement).pause();
+        }
+      }
+    } catch (e) {
+      console.warn("Sync failed", e);
+    }
+  
   }, [canControl, playerState, duration]);
 
   // Main sync loop
@@ -165,7 +175,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (syncIntervalRef.current) {
       clearInterval(syncIntervalRef.current);
     }
-    // The sync logic is now more robust and can run for everyone
+    // The sync logic now runs for everyone, but `canControl` check inside prevents viewers from sending updates.
     syncIntervalRef.current = setInterval(syncPlayerState, 1000);
 
     return () => {
