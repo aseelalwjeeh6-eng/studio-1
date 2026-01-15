@@ -67,11 +67,11 @@ export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, on
                         <DialogTitle className="text-2xl">متجر الهدايا</DialogTitle>
                         <DialogDescription>
                             <span>إرسال هدية إلى <span className="font-bold text-accent">{recipientName}</span></span>
-                            <div className="flex items-center gap-2 mt-1">
-                                <Coins className="text-amber-400" />
-                                <span>رصيدك: <span className="font-bold">{user?.coins?.toLocaleString() || 0}</span></span>
-                            </div>
                         </DialogDescription>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Coins className="text-amber-400" />
+                            <span>رصيدك: <span className="font-bold text-foreground">{user?.coins?.toLocaleString() || 0}</span></span>
+                        </div>
                     </DialogHeader>
                     <Tabs defaultValue="economic" className="flex-grow flex flex-col min-h-0">
                         <div className="px-6">
