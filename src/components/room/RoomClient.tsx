@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -179,7 +177,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
+const RoomLayout = ({ roomId, user, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
   
@@ -201,6 +199,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [pinError, setPinError] = useState(false);
   
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -258,6 +257,20 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   }, [localParticipant, participants, user?.name]);
 
   const [friendData, setFriendData] = useState<{ friends: AppUser[]; requests: AppUser[] }>({ friends: [], requests: [] });
+
+  const sendSystemMessage = useCallback((text: string) => {
+    if (!roomId || !user) return;
+    const chatRef = ref(database, `rooms/${roomId}/chat`);
+    const newMsgRef = push(chatRef);
+    const messageData: Message = {
+      id: newMsgRef.key!,
+      sender: 'System',
+      text,
+      timestamp: serverTimestamp() as any,
+      isSystemMessage: true,
+    };
+    set(newMsgRef, messageData);
+  }, [roomId, user]);
 
   // --- Wake Lock API for background playback ---
   const wakeLockRef = useRef<any>(null);
@@ -551,7 +564,15 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                 text: text,
                 timestamp: serverTimestamp() as any,
             };
+
+            if (replyingTo) {
+                messageData.quotedMessage = replyingTo.text;
+                messageData.quotedSender = replyingTo.sender;
+            }
+            
             await set(newMsgRef, messageData);
+
+            setReplyingTo(null);
             
             // Exit typing mode on send
             if (chatInputRef.current) {
@@ -573,6 +594,14 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         // Handled by CSS now
     };
 
+    const handleReply = useCallback((message: Message) => {
+        setReplyingTo(message);
+        chatInputRef.current?.focus();
+    }, []);
+
+    const handleCancelReply = useCallback(() => {
+        setReplyingTo(null);
+    }, []);
 
   const updateSearchHistory = (query: string) => {
       if(typeof window === 'undefined' || !query) return;
@@ -1037,7 +1066,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                           <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0 mt-2 md:mt-4">
                              <ChatHeader isHost={isHost} roomId={roomId} />
                              <div className="flex-grow min-h-0 pb-20">
-                               <ChatMessages roomId={roomId} user={user} />
+                               <ChatMessages roomId={roomId} user={user} onReply={handleReply} />
                              </div>
                            </div>
                       </>
@@ -1057,6 +1086,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     onBlur={handleChatInputBlur}
                     onSend={handleSendMessage}
                     isSending={isSendingMessage}
+                    replyingTo={replyingTo}
+                    onCancelReply={handleCancelReply}
                     onOpenGiftShop={() => {
                       setGiftingTo(''); // No pre-selected recipient
                       setIsGiftShopOpen(true);
@@ -1410,20 +1441,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
   
-  const sendSystemMessage = useCallback((text: string) => {
-    if (!roomId || !user) return;
-    const chatRef = ref(database, `rooms/${roomId}/chat`);
-    const newMsgRef = push(chatRef);
-    const messageData: Message = {
-      id: newMsgRef.key!,
-      sender: 'System',
-      text,
-      timestamp: serverTimestamp() as any,
-      isSystemMessage: true,
-    };
-    set(newMsgRef, messageData);
-  }, [roomId, user]);
-
   useEffect(() => {
     if (!isUserLoaded || !user) return;
 
@@ -1461,6 +1478,20 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     // For Realtime DB presence
     const presenceRef = ref(database, `presence/${user.name}`);
     const connectedRef = ref(database, '.info/connected');
+
+    const sendSystemMessage = (text: string) => {
+      if (!roomId || !user) return;
+      const chatRef = ref(database, `rooms/${roomId}/chat`);
+      const newMsgRef = push(chatRef);
+      const messageData: Message = {
+        id: newMsgRef.key!,
+        sender: 'System',
+        text,
+        timestamp: serverTimestamp() as any,
+        isSystemMessage: true,
+      };
+      set(newMsgRef, messageData);
+    };
 
     const setupRoom = async () => {
       try {
@@ -1542,7 +1573,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         isMounted = false;
         window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-}, [isUserLoaded, user, roomId, router, sendSystemMessage]);
+}, [isUserLoaded, user, roomId, router]);
 
   if (!isUserLoaded || !user || !passwordChecked) {
     return (
@@ -1590,7 +1621,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       <RoomLayout 
         roomId={roomId} 
         user={user} 
-        sendSystemMessage={sendSystemMessage}
         roomPassword={roomPassword}
         onCorrectPassword={() => setRoomPassword(undefined)} // Clear password check after correct entry
         isPasswordChecked={passwordChecked}
