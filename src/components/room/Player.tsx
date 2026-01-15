@@ -324,6 +324,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   };
 
   const onYtStateChange = (event: { data: number }) => {
+    // Only the controller should send state changes.
     if (!canControl || isSeekingRef.current) return;
     
     const currentTime = ytPlayerRef.current?.getCurrentTime();

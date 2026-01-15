@@ -407,7 +407,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         let heartbeatInterval: NodeJS.Timeout | null = null;
 
         const startHeartbeat = () => {
-            if (isHost && playerState?.isPlaying) {
+            if ((isHost || isModerator) && playerState?.isPlaying) {
                 heartbeatInterval = setInterval(() => {
                     if (document.visibilityState === 'visible') { // Only update if tab is active
                         const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
@@ -435,7 +435,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         return () => {
             stopHeartbeat();
         };
-    }, [isHost, playerState?.isPlaying, roomId]);
+    }, [isHost, isModerator, playerState?.isPlaying, roomId]);
 
 
   useEffect(() => {
@@ -966,9 +966,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   currentUserRequests={friendData.requests}
                               />
                           </div>
-                          <div className="flex-grow flex flex-col bg-black/20 backdrop-blur-lg rounded-t-lg min-h-0">
+                          <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0">
                              <ChatHeader isHost={isHost} roomId={roomId} />
-                             <div className="flex-grow min-h-0 pb-[88px] md:pb-[96px]">
+                             <div className="flex-grow min-h-0 pb-20">
                                <ChatMessages roomId={roomId} user={user} />
                              </div>
                            </div>
