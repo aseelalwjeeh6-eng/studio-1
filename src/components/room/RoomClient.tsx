@@ -331,7 +331,33 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     }
   }
 
-  const handleLeaveRoom = () => {
+  const handleLeaveRoom = async () => {
+    if (!user) {
+        router.push('/lobby');
+        return;
+    }
+
+    goOffline(database); // Disconnect from presence system
+
+    const roomRef = ref(database, `rooms/${roomId}`);
+    const membersRef = ref(database, `rooms/${roomId}/members`);
+
+    // Remove user from seats
+    const userSeat = seatedMembers.find(m => m.name === user.name);
+    if (userSeat) {
+        await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
+    }
+    
+    // Check if room will be empty after I leave
+    const membersSnapshot = await get(membersRef);
+    if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) {
+        // I am the last one, delete the whole room.
+        await remove(roomRef);
+    } else {
+        // Just remove myself from members.
+        await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
+    }
+    
     router.push('/lobby');
   };
   
@@ -1004,7 +1030,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                   onSendGift={handleOpenGiftShop}
                               />
                           </div>
-                          <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0">
+                          <div className="flex-shrink-0 mt-2 md:mt-4">
+                              <ViewerInfo members={viewers} />
+                          </div>
+                          <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0 mt-2 md:mt-4">
                              <ChatHeader isHost={isHost} roomId={roomId} />
                              <div className="flex-grow min-h-0 pb-20">
                                <ChatMessages roomId={roomId} user={user} />
@@ -1465,12 +1494,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
               }
             });
 
-            // Clean up listener on unmount
-             if (isMounted) {
-                // Attach cleanup to the component lifecycle
-                // This is a bit tricky since useEffect cleanup runs after the component unmounts
-             }
-
 
             if(!isReturning){
               sendSystemMessage(`${user.name} انضم إلى الغرفة`);
@@ -1517,17 +1540,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     return () => {
         isMounted = false;
         window.removeEventListener('beforeunload', handleBeforeUnload);
-        
-        if (user) {
-            const userSeat = seatedMembersRef.current.find(m => m.name === user.name);
-            if (userSeat) {
-                remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
-            }
-
-            // Cancel onDisconnect operations to prevent data removal if the user is just refreshing
-            onDisconnect(memberRef).cancel();
-            onDisconnect(presenceRef).cancel();
-        }
     };
 }, [isUserLoaded, user, roomId, router, sendSystemMessage]);
 

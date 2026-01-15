@@ -72,16 +72,13 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className={cn(
-                            "flex flex-col max-w-[80%]",
-                            isCurrentUser ? "self-end items-end" : "self-start items-start"
-                        )}>
-                             {!isCurrentUser && <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>}
+                        <div key={msg.id} className={cn("flex flex-col max-w-[80%]", "self-start")}>
+                             <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "p-2 md:p-3 rounded-xl break-words",
                                 isCurrentUser 
-                                  ? "bg-primary text-primary-foreground rounded-br-none" 
-                                  : "bg-secondary text-secondary-foreground rounded-bl-none"
+                                  ? "bg-primary text-primary-foreground" 
+                                  : "bg-secondary text-secondary-foreground"
                              )}>
                                 <p className="text-sm">{msg.text}</p>
                             </div>

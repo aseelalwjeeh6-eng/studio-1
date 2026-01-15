@@ -1,9 +1,10 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Gifts, Gift, GiftCategory } from '@/lib/gifts';
 import useUserSession from '@/hooks/use-user-session';
@@ -72,7 +73,7 @@ export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, on
     return (
         <>
             <Dialog open={isOpen} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+                <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0">
                     <DialogHeader className="p-6 pb-4 border-b">
                         <DialogTitle className="text-2xl">متجر الهدايا</DialogTitle>
                          {internalRecipient ? (
@@ -104,12 +105,15 @@ export default function GiftShopDialog({ isOpen, onOpenChange, recipientName, on
                         </div>
                     </DialogHeader>
                     <Tabs defaultValue="economic" className="flex-grow flex flex-col min-h-0">
-                        <div className="px-6">
-                            <TabsList className="grid w-full grid-cols-5">
-                                {categories.map(cat => (
-                                    <TabsTrigger key={cat.id} value={cat.id}>{cat.name}</TabsTrigger>
-                                ))}
-                            </TabsList>
+                        <div className="px-6 border-b">
+                            <ScrollArea className="w-full">
+                                <TabsList>
+                                    {categories.map(cat => (
+                                        <TabsTrigger key={cat.id} value={cat.id}>{cat.name}</TabsTrigger>
+                                    ))}
+                                </TabsList>
+                                <ScrollBar orientation="horizontal" />
+                            </ScrollArea>
                         </div>
                         <div className="flex-grow overflow-y-auto">
                             {categories.map(cat => (
