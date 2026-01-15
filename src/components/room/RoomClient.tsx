@@ -167,7 +167,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                         </Tooltip>
                     </TooltipProvider>
                 </div>
-                <Avatar className="h-8 w-8 md:h-10 md:w-10">
+                <Avatar className="h-8 w-8 md:h-10 md:h-10">
                     <AvatarImage src={avatar?.imageUrl} />
                     <AvatarFallback>{user?.name.charAt(0)}</AvatarFallback>
                 </Avatar>
@@ -407,7 +407,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         let heartbeatInterval: NodeJS.Timeout | null = null;
 
         const startHeartbeat = () => {
-            if ((isHost || isModerator) && playerState?.isPlaying) {
+            if ((canControl) && playerState?.isPlaying) {
                 heartbeatInterval = setInterval(() => {
                     if (document.visibilityState === 'visible') { // Only update if tab is active
                         const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
@@ -435,7 +435,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         return () => {
             stopHeartbeat();
         };
-    }, [isHost, isModerator, playerState?.isPlaying, roomId]);
+    }, [canControl, playerState?.isPlaying, roomId]);
 
 
   useEffect(() => {
@@ -1518,9 +1518,3 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
 };
 
 export default RoomClient;
-
-    
-
-      
-
-    

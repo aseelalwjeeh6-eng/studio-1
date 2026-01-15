@@ -99,7 +99,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   // --- Synchronization Logic ---
   const syncPlayerState = useCallback(() => {
-    if (canControl || !isPlayerReady.current || !playerState || !duration) {
+    if (canControl || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
       return;
     }
 
@@ -121,14 +121,23 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const timeDifference = serverTime - currentPlayerTime;
 
     // Apply Smart Correction Algorithm
-    if (Math.abs(timeDifference) > 2) { // Hard Sync
+    if (Math.abs(timeDifference) > 2) { // Hard Sync for large differences
       try {
         if (ytPlayerRef.current) ytPlayerRef.current.seekTo(serverTime, true);
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = serverTime;
         console.log(`Hard Sync: Correcting by ${timeDifference.toFixed(2)}s`);
       } catch (e) { console.warn("Hard Sync failed", e); }
+    } else if (Math.abs(timeDifference) > 0.5) { // Soft Sync for small, noticeable differences
+        // Not implemented via playbackRate for YouTube as it can be jarring.
+        // Relying on frequent progress updates and hard sync for larger drifts is more stable.
+        try {
+            if (playerState.isPlaying) {
+                if (ytPlayerRef.current) ytPlayerRef.current.seekTo(serverTime, true);
+                if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = serverTime;
+            }
+        } catch (e) { console.warn("Soft Sync Seek failed", e); }
     }
-    // Soft Sync is implicitly handled by the continuous progress bar update and player's own buffering
+    // Differences < 0.5s are ignored (tolerance zone)
 
     // Sync play/pause state
     try {
@@ -156,16 +165,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (syncIntervalRef.current) {
       clearInterval(syncIntervalRef.current);
     }
-    if (!canControl) {
-      syncIntervalRef.current = setInterval(syncPlayerState, 1000);
-    }
+    // The sync logic is now more robust and can run for everyone
+    syncIntervalRef.current = setInterval(syncPlayerState, 1000);
 
     return () => {
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
       }
     };
-  }, [canControl, syncPlayerState]);
+  }, [syncPlayerState]);
 
 
   const togglePlay = useCallback(() => {
@@ -232,7 +240,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
-        if (!playerState || !duration || duration === 0) return;
+        if (!playerState || !duration || duration === 0 || isSeekingRef.current) return;
         
         // Mathematical precision: calculate time based on server state.
         const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
@@ -372,6 +380,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const initialVolume = playerState?.volume ?? 0.8;
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
+
+    // Initial state is now handled by the start/autoplay vars and the sync loop.
+    // This prevents race conditions on join.
   };
 
   const onYtStateChange = (event: { data: number }) => {
@@ -654,5 +665,3 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 };
 
 export default Player;
-
-    
