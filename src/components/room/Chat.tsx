@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -72,7 +70,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className={cn("flex flex-col max-w-[80%]", "self-start")}>
+                        <div key={msg.id} className={cn("flex flex-col max-w-[80%]", "self-end")}>
                              <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
                              <div className={cn(
                                 "p-2 md:p-3 rounded-xl break-words",
