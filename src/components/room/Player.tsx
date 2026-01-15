@@ -126,12 +126,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
     // Apply Smart Correction Algorithm
     try {
-      if (Math.abs(timeDifference) > 2) { // Hard Sync for large differences
+      const absDifference = Math.abs(timeDifference);
+
+      // Hard Sync for large differences (> 2s)
+      if (absDifference > 2) { 
         if (localPlayer === ytPlayerRef.current) (localPlayer as YouTubePlayer).seekTo(serverTime, true);
         else (localPlayer as HTMLVideoElement).currentTime = serverTime;
         console.log(`Hard Sync: Correcting by ${timeDifference.toFixed(2)}s`);
-      } else if (Math.abs(timeDifference) > 0.5) { // Soft Sync for small, noticeable differences
-         // Soft sync by slightly changing playback rate
+      } 
+      // Soft Sync for small, noticeable differences (0.5s to 2s)
+      else if (absDifference > 0.5) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (localPlayer === ytPlayerRef.current) {
             const currentRate = (localPlayer as YouTubePlayer).getPlaybackRate();
@@ -140,8 +144,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             const currentRate = (localPlayer as HTMLVideoElement).playbackRate;
             if (currentRate !== playbackRate) (localPlayer as HTMLVideoElement).playbackRate = playbackRate;
         }
-      } else { // Tolerance Zone
-        // Reset playback rate if it was adjusted
+      } 
+      // Tolerance Zone (< 0.5s): Reset playback rate if it was adjusted
+      else { 
          if (localPlayer === ytPlayerRef.current) {
             if ((localPlayer as YouTubePlayer).getPlaybackRate() !== 1) (localPlayer as YouTubePlayer).setPlaybackRate(1);
         } else {
@@ -175,7 +180,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (syncIntervalRef.current) {
       clearInterval(syncIntervalRef.current);
     }
-    // The sync logic now runs for everyone, but `canControl` check inside prevents viewers from sending updates.
     syncIntervalRef.current = setInterval(syncPlayerState, 1000);
 
     return () => {
@@ -390,13 +394,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const initialVolume = playerState?.volume ?? 0.8;
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
-
-    // Initial state is now handled by the start/autoplay vars and the sync loop.
-    // This prevents race conditions on join.
   };
 
   const onYtStateChange = (event: { data: number }) => {
-    // Only the controller should send state changes.
     if (!canControl || isSeekingRef.current) return;
     
     const currentTime = ytPlayerRef.current?.getCurrentTime();
@@ -410,6 +410,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
        if (playerState?.isPlaying) {
         onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
       }
+    }
+  };
+
+  const onYtError = (event: { data: number }) => {
+    console.error(`YouTube Player Error: ${event.data}`);
+    // Errors: 2 (invalid param), 5 (HTML5 error), 100 (not found), 101/150 (embedding disallowed)
+    if (canControl) {
+      console.log("Error detected. Attempting to play next video in playlist.");
+      onVideoEnded(); // This function contains the logic to play the next video.
     }
   };
 
@@ -428,8 +437,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const initialVolume = playerState?.volume ?? 0.8;
     htmlPlayerRef.current.volume = initialVolume;
     setVolume(initialVolume);
-    
-    // The syncPlayerState will handle setting the correct time and play state
   };
   
   const onHtmlStateChange = () => {
@@ -484,6 +491,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                   onReady={onYtReady}
                   onStateChange={onYtStateChange}
                   onEnd={onYtEnd}
+                  onError={onYtError}
                   className="w-full h-full"
                 />
             );
