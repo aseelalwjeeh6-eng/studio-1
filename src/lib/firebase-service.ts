@@ -264,9 +264,9 @@ export const acceptFriendRequest = async (senderName: string, recipientName: str
     if (!reqKey) return;
 
     const updates: { [key: string]: any } = {};
-    updates[`/users/${recipientName}/friends/${senderName}`] = true;
-    updates[`/users/${senderName}/friends/${recipientName}`] = true;
-    updates[`/users/${recipientName}/friendRequests/${reqKey}`] = null; // Remove request
+    updates[`users/${recipientName}/friends/${senderName}`] = true;
+    updates[`users/${senderName}/friends/${recipientName}`] = true;
+    updates[`users/${recipientName}/friendRequests/${reqKey}`] = null; // Remove request
 
     await update(ref(database), updates);
 };
@@ -317,8 +317,8 @@ export const areFriends = async (username1: string, username2: string): Promise<
 
 export const removeFriend = async (currentUsername: string, friendNameToRemove: string) => {
     const updates: { [key: string]: any } = {};
-    updates[`/users/${currentUsername}/friends/${friendNameToRemove}`] = null;
-    updates[`/users/${friendNameToRemove}/friends/${currentUsername}`] = null;
+    updates[`users/${currentUsername}/friends/${friendNameToRemove}`] = null;
+    updates[`users/${friendNameToRemove}/friends/${currentUsername}`] = null;
     await update(ref(database), updates);
 };
 
@@ -457,8 +457,8 @@ export const sendGift = async (senderName: string, recipientName: string, giftId
         to: recipientName,
         description: `إرسال هدية (${gift.name}) إلى ${recipientName}`,
     };
-    updates[`/users/${senderName}/coins`] = newSenderCoins;
-    updates[`/users/${senderName}/transactions/${senderTxId}`] = senderTx;
+    updates[`users/${senderName}/coins`] = newSenderCoins;
+    updates[`users/${senderName}/transactions/${senderTxId}`] = senderTx;
 
     // 2. Add transaction to recipient
     const recipientTxId = uuidv4();
@@ -470,7 +470,7 @@ export const sendGift = async (senderName: string, recipientName: string, giftId
         from: senderName,
         description: `استلام هدية (${gift.name}) من ${senderName}`,
     };
-    updates[`/users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
+    updates[`users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
 
     // 3. Push gift event to room
     const giftEvent = {
@@ -480,8 +480,9 @@ export const sendGift = async (senderName: string, recipientName: string, giftId
         recipientName,
         timestamp: serverTimestamp(),
     };
-    const giftEventRef = push(ref(database, `rooms/${roomId}/giftStream`));
-    updates[giftEventRef.key!] = giftEvent; // This path is relative to the root `rooms/${roomId}/giftStream`
+    const giftStreamPath = `rooms/${roomId}/giftStream`;
+    const newGiftKey = push(ref(database, giftStreamPath)).key;
+    updates[`${giftStreamPath}/${newGiftKey}`] = giftEvent;
     
     // Perform all updates
     await update(ref(database), updates);
@@ -532,9 +533,9 @@ export const transferCoins = async (senderName: string, recipientName: string, a
         timestamp: Date.now(),
         description: `رسوم تحويل 10%`,
     };
-    updates[`/users/${senderName}/coins`] = newSenderCoins;
-    updates[`/users/${senderName}/transactions/${senderTxId}`] = senderTx;
-    updates[`/users/${senderName}/transactions/${feeTxId}`] = feeTx;
+    updates[`users/${senderName}/coins`] = newSenderCoins;
+    updates[`users/${senderName}/transactions/${senderTxId}`] = senderTx;
+    updates[`users/${senderName}/transactions/${feeTxId}`] = feeTx;
 
     // Recipient updates
     const newRecipientCoins = (recipient.coins || 0) + amount;
@@ -547,8 +548,8 @@ export const transferCoins = async (senderName: string, recipientName: string, a
         from: senderName,
         description: `استلام ${amount} كوينز من ${senderName}`,
     };
-    updates[`/users/${recipientName}/coins`] = newRecipientCoins;
-    updates[`/users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
+    updates[`users/${recipientName}/coins`] = newRecipientCoins;
+    updates[`users/${recipientName}/transactions/${recipientTxId}`] = recipientTx;
     
     await update(ref(database), updates);
 
