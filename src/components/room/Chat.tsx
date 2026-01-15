@@ -72,35 +72,28 @@ const ChatMessages = ({ roomId, user, onReply }: { roomId: string; user: User; o
                         );
                     }
                     return (
-                        <div key={msg.id} className={cn("flex flex-col max-w-[80%] group relative", "self-end")}>
-                            <div className="flex items-center gap-4">
-                                {!msg.isSystemMessage && !isCurrentUser && (
-                                    <button onClick={() => onReply(msg)} className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full hover:bg-secondary">
-                                        <CornerUpLeft className="w-4 h-4" />
-                                    </button>
-                                )}
-                                <div className="flex-grow">
-                                     <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
-                                     <div className={cn(
-                                        "p-2 md:p-3 rounded-xl break-words",
-                                        isCurrentUser 
-                                          ? "bg-primary text-primary-foreground" 
-                                          : "bg-secondary text-secondary-foreground"
-                                     )}>
-                                        {msg.quotedMessage && (
-                                            <div className="p-2 rounded-md bg-black/20 border-b border-white/20 mb-2">
-                                                <p className="text-xs font-bold">{msg.quotedSender}</p>
-                                                <p className="text-sm opacity-80 line-clamp-2">{msg.quotedMessage}</p>
-                                            </div>
-                                        )}
-                                        <p className="text-sm">{msg.text}</p>
-                                    </div>
+                        <div key={msg.id} className={cn("flex items-center gap-2 group w-full", "justify-end")}>
+                             {!msg.isSystemMessage && (
+                                <button onClick={() => onReply(msg)} className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full hover:bg-black/20 self-center">
+                                    <CornerUpLeft className="w-4 h-4" />
+                                </button>
+                            )}
+                            <div className={cn("flex flex-col max-w-[80%]")}>
+                                <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
+                                <div className={cn(
+                                    "p-2 md:p-3 rounded-xl break-words",
+                                    isCurrentUser 
+                                        ? "bg-primary text-primary-foreground" 
+                                        : "bg-secondary text-secondary-foreground"
+                                )}>
+                                    {msg.quotedMessage && (
+                                        <div className="p-2 rounded-md bg-black/20 border-b border-white/20 mb-2">
+                                            <p className="text-xs font-bold">{msg.quotedSender}</p>
+                                            <p className="text-sm opacity-80 line-clamp-2">{msg.quotedMessage}</p>
+                                        </div>
+                                    )}
+                                    <p className="text-sm">{msg.text}</p>
                                 </div>
-                                {!msg.isSystemMessage && isCurrentUser && (
-                                    <button onClick={() => onReply(msg)} className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full hover:bg-black/20">
-                                        <CornerUpLeft className="w-4 h-4" />
-                                    </button>
-                                )}
                             </div>
                         </div>
                     );

@@ -958,11 +958,11 @@ const RoomLayout = ({ roomId, user, roomPassword, onCorrectPassword, isPasswordC
 
   const handleSendGift = async (recipientName: string, giftId: string) => {
     if(!user) throw new Error("User not found");
-    await sendGift(user.name, recipientName, giftId, roomId);
+    const newBalance = await sendGift(user.name, recipientName, giftId, roomId);
 
     const gift = Gifts.find(g => g.id === giftId);
     if (gift) {
-      sendSystemMessage(`🎁 أرسل ${user.name} هدية "${gift.name}" إلى ${recipientName} بقيمة ${gift.cost.toLocaleString()} كوينز`);
+      sendSystemMessage(`🎁 أرسل ${user.name} هدية "${gift.name}" إلى ${recipientName}`);
     }
   };
 
