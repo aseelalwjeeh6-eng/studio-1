@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -13,6 +12,18 @@ import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Label } from '../ui/label';
 import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 
+/**
+ * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM
+ * ---------------------------------------
+ * Current implementation uses a 1s interval for drift calculation.
+ * Logic: Server Time = [Snapshot SeekTime] + (Now - [Snapshot Timestamp]).
+ * 
+ * Identified Optimization Paths:
+ * 1. Visibility Awareness: Sync should throttle when tab is backgrounded to save CPU/Battery.
+ * 2. Buffer State Protection: Prevent Hard Sync if the player is currently in 'BUFFERING' state
+ *    to avoid infinite seek loops on slow connections.
+ * 3. MediaSession API: Enhanced integration for lock-screen controls.
+ */
 
 interface PlayerProps {
   videoUrl: string;
@@ -42,7 +53,6 @@ function getUrlType(url: string): UrlType {
         }
 
     } catch (e) {
-      // Not a valid URL, might be youtube ID
       if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
         return 'youtube';
       }
@@ -67,10 +77,7 @@ function getYouTubeVideoId(url: string): string | null {
         return urlObj.pathname.split('/embed/')[1].split('?')[0];
       }
     }
-  } catch (e) {
-    // Not a valid URL, could be a video ID
-  }
-  // Fallback for just ID
+  } catch (e) {}
   if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
     return url;
   }
@@ -97,9 +104,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
-  // --- Synchronization Logic ---
+  // --- Advanced Synchronization Logic ---
   const syncPlayerState = useCallback(() => {
-    if (canControl || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
+    // Safety check: Don't sync if tab is hidden or conditions aren't met
+    if (document.visibilityState === 'hidden' || canControl || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
       return;
     }
   
@@ -110,31 +118,34 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (ytPlayerRef.current) {
         currentPlayerTime = ytPlayerRef.current.getCurrentTime();
         localPlayer = ytPlayerRef.current;
+        // Optimization: Skip sync if YouTube is in buffering state to avoid seek-looping
+        const ytState = ytPlayerRef.current.getPlayerState();
+        if (ytState === 3) return; 
       } else if (htmlPlayerRef.current) {
         currentPlayerTime = htmlPlayerRef.current.currentTime;
         localPlayer = htmlPlayerRef.current;
+        if (htmlPlayerRef.current.readyState < 2) return; // Not enough data
       } else {
-        return; // No active player
+        return;
       }
     } catch (e) {
-      console.warn("Sync: Could not get current player time", e);
+      console.warn("Sync: Player lookup failed", e);
       return;
     }
   
     const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
     const timeDifference = serverTime - currentPlayerTime;
   
-    // Apply Smart Correction Algorithm
     try {
       const absDifference = Math.abs(timeDifference);
 
-      // Hard Sync for large differences (> 2s)
+      // Implementation of "Smart Correction Algorithm"
+      // 1. Hard Sync (> 2s)
       if (absDifference > 2) { 
         if (localPlayer === ytPlayerRef.current) (localPlayer as YouTubePlayer).seekTo(serverTime, true);
         else (localPlayer as HTMLVideoElement).currentTime = serverTime;
-        console.log(`Hard Sync: Correcting by ${timeDifference.toFixed(2)}s`);
       } 
-      // Soft Sync for small, noticeable differences (0.5s to 2s)
+      // 2. Soft Sync (0.5s to 2s) - Adjust playback speed slightly
       else if (absDifference > 0.5) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (localPlayer === ytPlayerRef.current) {
@@ -145,7 +156,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             if (currentRate !== playbackRate) (localPlayer as HTMLVideoElement).playbackRate = playbackRate;
         }
       } 
-      // Tolerance Zone (< 0.5s): Reset playback rate if it was adjusted
+      // 3. Tolerance Zone (< 0.5s) - Normalize playback rate
       else { 
          if (localPlayer === ytPlayerRef.current) {
             if ((localPlayer as YouTubePlayer).getPlaybackRate() !== 1) (localPlayer as YouTubePlayer).setPlaybackRate(1);
@@ -154,17 +165,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
       }
   
-      // Sync play/pause state
+      // Ensure local playback state matches server state
       if (localPlayer === ytPlayerRef.current) {
         const ytState = (localPlayer as YouTubePlayer).getPlayerState();
-        if (playerState.isPlaying && ytState !== 1) { // Is playing on server, but not locally
+        if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
           (localPlayer as YouTubePlayer).playVideo();
-        } else if (!playerState.isPlaying && ytState === 1) { // Is paused on server, but playing locally
+        } else if (!playerState.isPlaying && ytState === 1) {
           (localPlayer as YouTubePlayer).pauseVideo();
         }
       } else {
         if (playerState.isPlaying && (localPlayer as HTMLVideoElement).paused) {
-          (localPlayer as HTMLVideoElement).play().catch(console.error);
+          (localPlayer as HTMLVideoElement).play().catch(() => {});
         } else if (!playerState.isPlaying && !(localPlayer as HTMLVideoElement).paused) {
           (localPlayer as HTMLVideoElement).pause();
         }
@@ -175,17 +186,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   }, [canControl, playerState, duration]);
 
-  // Main sync loop
   useEffect(() => {
-    if (syncIntervalRef.current) {
-      clearInterval(syncIntervalRef.current);
-    }
+    if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     syncIntervalRef.current = setInterval(syncPlayerState, 1000);
-
     return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
   }, [syncPlayerState]);
 
@@ -207,72 +212,49 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [canControl, urlType]);
 
-  // --- Media Session API Integration ---
+  // Media Session Integration
   useEffect(() => {
     if ('mediaSession' in navigator) {
       if (!videoDetails || urlType === 'empty') {
-        (navigator as any).mediaSession.metadata = null;
-        (navigator as any).mediaSession.setActionHandler('play', null);
-        (navigator as any).mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.metadata = null;
         return;
       }
       
       const artwork = [];
-      if (videoDetails.snippet.thumbnails.high) {
-        artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
-      }
-      if (videoDetails.snippet.thumbnails.medium) {
-        artwork.push({ src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' });
-      }
-      if (videoDetails.snippet.thumbnails.default) {
-        artwork.push({ src: videoDetails.snippet.thumbnails.default.url, sizes: '120x90', type: 'image/jpeg' });
-      }
+      if (videoDetails.snippet.thumbnails.high) artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
+      if (videoDetails.snippet.thumbnails.medium) artwork.push({ src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' });
 
-      const metadata = {
+      navigator.mediaSession.metadata = new MediaMetadata({
         title: videoDetails.snippet.title,
         artist: videoDetails.snippet.channelTitle,
         album: 'اصيل سينما',
         artwork: artwork
-      };
-
-      (navigator as any).mediaSession.metadata = new MediaMetadata(metadata);
+      });
       
-      (navigator as any).mediaSession.setActionHandler('play', canControl ? () => togglePlay() : null);
-      (navigator as any).mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
-      
+      navigator.mediaSession.setActionHandler('play', canControl ? () => togglePlay() : null);
+      navigator.mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
     }
   }, [videoDetails, canControl, togglePlay, urlType]);
 
   useEffect(() => {
     if ('mediaSession' in navigator) {
-        (navigator as any).mediaSession.playbackState = playerState?.isPlaying ? "playing" : "paused";
+        navigator.mediaSession.playbackState = playerState?.isPlaying ? "playing" : "paused";
     }
   }, [playerState?.isPlaying]);
 
 
-  // --- This effect is now the single source of truth for the progress bar.
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
         if (!playerState || !duration || duration === 0 || isSeekingRef.current) return;
-        
-        // Mathematical precision: calculate time based on server state.
         const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
-        
-        if (serverTime <= duration) {
-            setProgress(serverTime);
-        } else {
-            setProgress(duration);
-        }
+        setProgress(Math.min(serverTime, duration));
     };
     
-    // Update immediately, then set interval
     updateProgress();
-    
     if (playerState?.isPlaying) {
       progressInterval = setInterval(updateProgress, 500);
     }
-    
     return () => {
       if (progressInterval) clearInterval(progressInterval);
     };
@@ -285,22 +267,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
         if (ytPlayerRef.current) currentTime = ytPlayerRef.current.getCurrentTime();
         if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
-    } catch(e) { console.warn("Couldn't get player time for seek", e); }
+    } catch(e) {}
 
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
-    
     isSeekingRef.current = true;
     try {
         if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     } catch (e) {
-        console.warn("Could not seek", e);
         isSeekingRef.current = false;
         return;
     }
     setProgress(newTime);
     onPlayerStateChange({ seekTime: newTime });
-    
     setTimeout(() => { isSeekingRef.current = false; }, 500);
   }, [canControl, duration, onPlayerStateChange]);
 
@@ -309,23 +288,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const newTime = value[0];
     setProgress(newTime);
     isSeekingRef.current = true;
-    
     try {
         if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, false);
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
-    } catch (e) {
-        console.warn("Could not seek on slider change", e);
-    }
+    } catch (e) {}
   };
   
   const handleSliderCommit = (value: number[]) => {
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
-      try {
-        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
-      } catch(e) {
-        console.warn("Could not commit YouTube seek");
-      }
+      try { if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true); } catch(e) {}
       onPlayerStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
   };
@@ -333,24 +305,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const handleVolumeChange = (newVolume: number[]) => {
     const vol = newVolume[0];
     setVolume(vol);
-
     try {
         if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
         if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
-    } catch (e) {
-        console.warn("Could not set volume on change", e);
-    }
-    
-    if(canControl) {
-        onPlayerStateChange({ volume: vol });
-    }
+    } catch (e) {}
+    if(canControl) onPlayerStateChange({ volume: vol });
   };
   
   const handleQualityChange = (newQuality: string) => {
     setQuality(newQuality);
-    if(canControl) {
-        onPlayerStateChange({ quality: newQuality });
-    }
+    if(canControl) onPlayerStateChange({ quality: newQuality });
   }
 
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -367,30 +331,22 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     if (now - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD && clickSide === lastClickSideRef.current) {
       if (canControl) {
-        if (clickSide === 'left') {
-          seek(-5);
-        } else if (clickSide === 'right') {
-          seek(5);
-        }
+        if (clickSide === 'left') seek(-5);
+        else if (clickSide === 'right') seek(5);
       }
       lastClickTimeRef.current = 0;
       lastClickSideRef.current = null;
     } else {
       lastClickTimeRef.current = now;
       lastClickSideRef.current = clickSide;
-
-      if (clickSide === 'center') {
-        togglePlay();
-      }
+      if (clickSide === 'center') togglePlay();
     }
   };
   
   const onYtReady = (event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
-    const ytDuration = event.target.getDuration();
-    setDuration(ytDuration);
-    
+    setDuration(event.target.getDuration());
     const initialVolume = playerState?.volume ?? 0.8;
     event.target.setVolume(initialVolume * 100);
     setVolume(initialVolume);
@@ -398,42 +354,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   const onYtStateChange = (event: { data: number }) => {
     if (!canControl || isSeekingRef.current) return;
-    
     const currentTime = ytPlayerRef.current?.getCurrentTime();
     if (currentTime === undefined) return;
 
     if (event.data === 1) { // Playing
-      if (!playerState?.isPlaying) {
-        onPlayerStateChange({ isPlaying: true, seekTime: currentTime });
-      }
+      if (!playerState?.isPlaying) onPlayerStateChange({ isPlaying: true, seekTime: currentTime });
     } else if (event.data === 2) { // Paused
-       if (playerState?.isPlaying) {
-        onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
-      }
+       if (playerState?.isPlaying) onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
     }
   };
 
   const onYtError = (event: { data: number }) => {
-    console.error(`YouTube Player Error: ${event.data}`);
-    // Errors: 2 (invalid param), 5 (HTML5 error), 100 (not found), 101/150 (embedding disallowed)
-    if (canControl) {
-      console.log("Error detected. Attempting to play next video in playlist.");
-      onVideoEnded(); // This function contains the logic to play the next video.
-    }
+    console.error(`YouTube Error: ${event.data}`);
+    if (canControl) onVideoEnded();
   };
 
-  const onYtEnd = () => {
-    if (canControl) {
-      onVideoEnded();
-    }
-  };
+  const onYtEnd = () => { if (canControl) onVideoEnded(); };
 
   const onHtmlReady = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
-    const htmlDuration = htmlPlayerRef.current.duration;
-    setDuration(htmlDuration);
-
+    setDuration(htmlPlayerRef.current.duration);
     const initialVolume = playerState?.volume ?? 0.8;
     htmlPlayerRef.current.volume = initialVolume;
     setVolume(initialVolume);
@@ -441,18 +382,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const onHtmlStateChange = () => {
       if (!canControl || isSeekingRef.current || !htmlPlayerRef.current) return;
-      
       const isPlaying = !htmlPlayerRef.current.paused;
-      if (playerState?.isPlaying !== isPlaying) {
-          onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
-      }
+      if (playerState?.isPlaying !== isPlaying) onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
   };
 
-  const onHtmlEnded = () => {
-    if (canControl) {
-        onVideoEnded();
-    }
-  }
+  const onHtmlEnded = () => { if (canControl) onVideoEnded(); }
 
   const formatTime = (seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -467,7 +401,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         case 'youtube':
             if (!videoId) return renderEmptyState('Invalid YouTube URL');
             const startSeconds = (playerState?.seekTime ?? 0) + ((playerState?.isPlaying && playerState?.timestamp) ? (Date.now() - playerState.timestamp) / 1000 : 0);
-
             return (
                 <YouTube
                   key={`${videoId}-${quality}`}
@@ -495,7 +428,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                   className="w-full h-full"
                 />
             );
-        
         case 'direct':
              const directStartSeconds = (playerState?.seekTime ?? 0) + ((playerState?.isPlaying && playerState?.timestamp) ? (Date.now() - playerState.timestamp) / 1000 : 0);
             return (
@@ -511,7 +443,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     autoPlay={playerState?.isPlaying}
                 />
             );
-
         case 'iframe':
              return (
               <iframe
@@ -523,8 +454,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-presentation"
               ></iframe>
             );
-
-        case 'empty':
         default:
             return renderEmptyState();
     }
@@ -567,10 +496,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             "absolute inset-0 z-20 flex flex-col justify-between p-1 md:p-2 bg-black/30 transition-opacity duration-300",
             showControls ? "opacity-100" : "opacity-0"
         )}
-        onClick={(e) => e.stopPropagation()} // Prevent click from bubbling to the parent
+        onClick={(e) => e.stopPropagation()} 
       >
         <div></div>
-
         <div className="flex items-center justify-center">
            {canControl && (
             <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-16 md:h-16">
@@ -578,18 +506,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             </Button>
            )}
         </div>
-
         <div className="flex items-center gap-1 md:gap-2 text-white font-mono text-xs md:text-sm">
            {canControl ? (
             <>
                <span className="w-12 text-center">{formatTime(progress)}</span>
-               <Slider
-                    value={[progress]}
-                    max={duration}
-                    step={1}
-                    onValueChange={handleSliderChange}
-                    onValueCommit={handleSliderCommit}
-                />
+               <Slider value={[progress]} max={duration} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} />
                <span className="w-12 text-center">{formatTime(duration)}</span>
             </>
            ) : (
@@ -601,7 +522,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                <span className="w-12 text-center">{formatTime(duration)}</span>
             </>
            )}
-           
             <Popover>
                 <PopoverTrigger asChild>
                     <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
@@ -609,17 +529,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none">
-                     <Slider
-                        defaultValue={[volume]}
-                        max={1}
-                        step={0.05}
-                        orientation="vertical"
-                        className="h-24 w-2"
-                        onValueChange={handleVolumeChange}
-                    />
+                     <Slider defaultValue={[volume]} max={1} step={0.05} orientation="vertical" className="h-24 w-2" onValueChange={handleVolumeChange} />
                 </PopoverContent>
             </Popover>
-
             {urlType === 'youtube' && canControl && (
               <Popover>
                 <PopoverTrigger asChild>
@@ -633,27 +545,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                       <RadioGroupItem value="auto" id="qauto" />
                       <Label htmlFor="qauto">Auto</Label>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="hd1080" id="q1080" />
-                      <Label htmlFor="q1080">1080p</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="hd720" id="q720" />
-                      <Label htmlFor="q720">720p</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="large" id="q480" />
-                      <Label htmlFor="q480">480p</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="medium" id="q360" />
-                      <Label htmlFor="q360">360p</Label>
-                    </div>
+                    {['hd1080', 'hd720', 'large', 'medium'].map(q => (
+                      <div key={q} className="flex items-center space-x-2">
+                        <RadioGroupItem value={q} id={`q${q}`} />
+                        <Label htmlFor={`q${q}`}>{q.replace('hd', '').replace('large', '480p').replace('medium', '360p')}</Label>
+                      </div>
+                    ))}
                   </RadioGroup>
                 </PopoverContent>
               </Popover>
             )}
-
         </div>
       </div>
     );
@@ -670,13 +571,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         onClick={handlePlayerClick}
         onMouseLeave={() => {
             if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-            controlsTimeoutRef.current = null;
             setShowControls(false);
         }}
     >
-      <div className="absolute inset-0 w-full h-full">
-         {renderContent()}
-      </div>
+      <div className="absolute inset-0 w-full h-full">{renderContent()}</div>
       {renderCustomControls()}
     </div>
   );

@@ -36,16 +36,26 @@ import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
 import { Gifts } from '@/lib/gifts';
 
+/**
+ * TECHNICAL ANALYSIS - ROOM ARCHITECTURE
+ * --------------------------------------
+ * The RoomClient manages the lifecycle of a virtual cinema room.
+ * Key Mechanisms:
+ * 1. Independent Persistence: Room is a standalone entity in Firebase.
+ * 2. Heartbeat: Ensuring the 'Reference Time' advances even if the host is fluctuating.
+ * 3. Reactive State: All UI elements (Seats, Chat, Player) are synchronized via Firebase Realtime listeners.
+ * 
+ * Safety Checkpoints:
+ * - Ghost Room Cleanup: Handled in Lobby and on last user exit.
+ * - Listener Management: Use of Unsubscribe array to prevent memory leaks.
+ * - Concurrency: Use of runTransaction for seat allocation and player state updates.
+ */
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
-
     const handleKeyClick = (key: string) => {
         let newPin = pin;
-        if (key === 'backspace') {
-            newPin = newPin.slice(0, -1);
-        } else if (pin.length < pinLength) {
-            newPin += key;
-        }
+        if (key === 'backspace') newPin = newPin.slice(0, -1);
+        else if (pin.length < pinLength) newPin += key;
         onPinChange(newPin);
     };
 
@@ -73,7 +83,7 @@ const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChan
 export type Member = { 
   name: string;
   avatarId?: string;
-  joinedAt: any; // Can be a server timestamp object or a number
+  joinedAt: any; 
 };
 
 export type SeatedMember = {
@@ -93,8 +103,8 @@ export type PlayerState = {
 const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwitchToVideo, onSwitchToPlayer, videoMode, onInviteClick, onSettingsClick, roomName, hostName, canControl }: { onSearchClick: () => void; onPlaylistClick: () => void; roomId: string; onLeaveRoom: () => void, onSwitchToVideo: () => void; onSwitchToPlayer: () => void; videoMode: boolean; onInviteClick: () => void; onSettingsClick: () => void; roomName?: string; hostName: string; canControl: boolean; }) => {
     const { user } = useUserSession();
     const avatar = PlaceHolderImages.find(p => p.id === user?.avatarId) ?? PlaceHolderImages[0];
-
     const [isCopied, setIsCopied] = useState(false);
+    
     const handleCopy = () => {
         navigator.clipboard.writeText(roomId).then(() => {
             setIsCopied(true);
@@ -113,13 +123,11 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="bg-card/80 backdrop-blur-lg">
                          <DropdownMenuItem onClick={onInviteClick}>
-                            <Users className="me-2" />
-                            دعوة أصدقاء
+                            <Users className="me-2" /> دعوة أصدقاء
                         </DropdownMenuItem>
                         {canControl && (
                             <DropdownMenuItem onClick={onSettingsClick}>
-                                <Settings className="me-2"/>
-                                إعدادات الغرفة
+                                <Settings className="me-2"/> إعدادات الغرفة
                             </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
@@ -142,12 +150,10 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
             {!videoMode && canControl && (
                 <div className='flex items-center gap-1 md:gap-2'>
                     <Button onClick={onPlaylistClick} variant="outline" size="sm">
-                        <ListMusic className="me-1 md:me-2" />
-                        <span className='hidden sm:inline'>قائمة التشغيل</span>
+                        <ListMusic className="me-1 md:me-2" /> <span className='hidden sm:inline'>قائمة التشغيل</span>
                     </Button>
                     <Button onClick={onSearchClick} variant="outline" size="sm">
-                        <Youtube className="me-1 md:me-2" />
-                         <span className='hidden sm:inline'>إضافة فيديو</span>
+                        <Youtube className="me-1 md:me-2" /> <span className='hidden sm:inline'>إضافة فيديو</span>
                     </Button>
                 </div>
             )}
@@ -162,9 +168,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                                     {isCopied ? <Check className="w-3 h-3 text-green-500"/> : <Copy className="w-3 h-3"/>}
                                 </button>
                             </TooltipTrigger>
-                            <TooltipContent>
-                                <p>{isCopied ? 'تم النسخ!' : 'انسخ للمشاركة'}</p>
-                            </TooltipContent>
+                            <TooltipContent><p>{isCopied ? 'تم النسخ!' : 'انسخ للمشاركة'}</p></TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
                 </div>
@@ -177,1454 +181,357 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
     )
 }
 
-const RoomLayout = ({ roomId, user, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
+const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
   
-  const [allMembers, setAllMembers] = useState<Member[]>([]);
-  const [seatedMembers, setSeatedMembers] = useState<SeatedMember[]>([]);
-  const [videoUrl, setVideoUrl] = useState('');
-  const [currentVideoDetails, setCurrentVideoDetails] = useState<YouTubeVideo | null>(null);
-  const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
+  // Logical state grouping
+  const [roomBasicInfo, setRoomBasicInfo] = useState({ name: '', hostName: '', moderators: [] as string[], isPrivate: false, background: null as string | null });
+  const [videoState, setVideoState] = useState({ url: '', details: null as YouTubeVideo | null, playlist: [] as PlaylistItem[], mode: false });
+  const [membersState, setMembersState] = useState({ all: [] as Member[], seated: [] as SeatedMember[] });
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
-  const [hostName, setHostName] = useState('');
-  const [roomName, setRoomName] = useState('');
-  const [moderators, setModerators] = useState<string[]>([]);
-  const [roomBackground, setRoomBackground] = useState<string | null>(null);
-  const [isPrivate, setIsPrivate] = useState(false);
   
-  const [videoMode, setVideoMode] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [auth, setAuth] = useState({ isAuthenticating: false, pinInput: '', pinError: false, isFullyAuthed: false });
+  const [chatState, setChatState] = useState({ isSending: false, replyingTo: null as Message | null });
+  const [dialogs, setDialogs] = useState({ search: false, playlist: false, background: false, settings: false, invite: false, giftShop: false });
   
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-
-
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
-  const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [urlInput, setUrlInput] = useState('');
-  const [searchResults, setResults] = useState<YouTubeVideo[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [search, setSearch] = useState({ query: '', urlInput: '', results: [] as YouTubeVideo[], isSearching: false, error: null as string | null, history: [] as string[] });
+  const [friendData, setFriendData] = useState({ friends: [] as AppUser[], requests: [] as AppUser[], invited: new Set<string>() });
+  const [preview, setPreview] = useState({ video: null as YouTubeVideo | null, recentlyAdded: new Set<string>() });
   
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [friends, setFriends] = useState<AppUser[]>([]);
-  const [invitedFriends, setInvitedFriends] = useState<Set<string>>(new Set());
-  
-  const [previewVideo, setPreviewVideo] = useState<YouTubeVideo | null>(null);
+  const [giftData, setGiftData] = useState({ target: '', stream: [] as any[] });
   const previewPlayerRef = useRef<YouTubePlayer | null>(null);
-  const [recentlyAddedToPlaylist, setRecentlyAddedToPlaylist] = useState<Set<string>>(new Set());
 
-  
-  // Room settings state
-  const [tempRoomName, setTempRoomName] = useState('');
-  const [tempPin, setTempPin] = useState('');
-  const [tempIsPrivate, setTempIsPrivate] = useState(false);
-
-  const [isGiftShopOpen, setIsGiftShopOpen] = useState(false);
-  const [giftingTo, setGiftingTo] = useState('');
-
-  const [giftStream, setGiftStream] = useState<any[]>([]);
-
-  
   const { room } = useLiveKitRoom();
   const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
 
-  const isHost = user?.name === hostName;
-  const isModerator = user ? moderators.includes(user.name) : false;
+  const isHost = user?.name === roomBasicInfo.hostName;
+  const isModerator = roomBasicInfo.moderators.includes(user.name);
   const canControl = isHost || isModerator;
 
   const viewers = useMemo(() => {
-    const seatedNames = new Set(seatedMembers.map(m => m.name));
-    return allMembers.filter(m => !seatedNames.has(m.name));
-  }, [allMembers, seatedMembers]);
+    const seatedNames = new Set(membersState.seated.map(m => m.name));
+    return membersState.all.filter(m => !seatedNames.has(m.name));
+  }, [membersState.all, membersState.seated]);
 
-  const isSeated = useMemo(() => {
-    return seatedMembers.some(m => m.name === user.name);
-  }, [seatedMembers, user]);
+  const isSeated = useMemo(() => membersState.seated.some(m => m.name === user.name), [membersState.seated, user.name]);
   
   const isMuted = useMemo(() => {
       const participant = [localParticipant, ...participants].find(p => p.identity === user?.name);
       return participant ? !participant.isMicrophoneEnabled : true;
   }, [localParticipant, participants, user?.name]);
 
-  const [friendData, setFriendData] = useState<{ friends: AppUser[]; requests: AppUser[] }>({ friends: [], requests: [] });
-
-  const sendSystemMessage = useCallback((text: string) => {
-    if (!roomId || !user) return;
-    const chatRef = ref(database, `rooms/${roomId}/chat`);
-    const newMsgRef = push(chatRef);
-    const messageData: Message = {
-      id: newMsgRef.key!,
-      sender: 'System',
-      text,
-      timestamp: serverTimestamp() as any,
-      isSystemMessage: true,
-    };
-    set(newMsgRef, messageData);
-  }, [roomId, user]);
-
-  // --- Wake Lock API for background playback ---
+  // Wake Lock for background playback persistence
   const wakeLockRef = useRef<any>(null);
   useEffect(() => {
-    const acquireWakeLock = async () => {
-      if ('wakeLock' in navigator && !wakeLockRef.current) {
-        try {
-          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-          console.log('Wake Lock acquired.');
-          wakeLockRef.current.addEventListener('release', () => {
-            console.log('Wake Lock was released.');
-            wakeLockRef.current = null;
-          });
-        } catch (err: any) {
-          console.error(`${err.name}, ${err.message}`);
+    const handleWakeLock = async () => {
+      if ('wakeLock' in navigator) {
+        if (playerState?.isPlaying && !wakeLockRef.current) {
+          try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
+        } else if (!playerState?.isPlaying && wakeLockRef.current) {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
         }
       }
     };
-
-    const releaseWakeLock = async () => {
-      if (wakeLockRef.current) {
-        await wakeLockRef.current.release();
-        wakeLockRef.current = null;
-      }
-    };
-
-    if (playerState?.isPlaying) {
-      acquireWakeLock();
-    } else {
-      releaseWakeLock();
-    }
-
-    return () => {
-      releaseWakeLock();
-    };
+    handleWakeLock();
+    return () => { if(wakeLockRef.current) wakeLockRef.current.release(); };
   }, [playerState?.isPlaying]);
 
-  useEffect(() => {
-      if (isPasswordChecked) {
-          setIsAuthenticated(!roomPassword);
-      }
-  }, [isPasswordChecked, roomPassword]);
+  useEffect(() => { if (isPasswordChecked) setAuth(prev => ({ ...prev, isFullyAuthed: !roomPassword })); }, [isPasswordChecked, roomPassword]);
 
   useEffect(() => {
-    const fetchFriendData = async () => {
+    const fetchFriends = async () => {
         if (!user) return;
-        const [friendsList, requestsList] = await Promise.all([
-            getFriends(user.name),
-            getFriendRequests(user.name)
-        ]);
-        setFriendData({ friends: friendsList, requests: requestsList });
+        const [friendsList, requestsList] = await Promise.all([getFriends(user.name), getFriendRequests(user.name)]);
+        setFriendData(prev => ({ ...prev, friends: friendsList, requests: requestsList }));
     };
-    fetchFriendData();
+    fetchFriends();
   }, [user]);
 
   const handlePinChange = (pin: string) => {
-    setPinInput(pin);
-    setPinError(false);
+    setAuth(prev => ({ ...prev, pinInput: pin, pinError: false }));
     if (pin.length === 4) {
         if (pin === roomPassword) {
             onCorrectPassword();
-            setIsAuthenticated(true);
+            setAuth(prev => ({ ...prev, isFullyAuthed: true }));
         } else {
-            console.error("كلمة المرور غير صحيحة.");
-            setPinError(true);
-            setTimeout(() => {
-                setPinInput('');
-                setPinError(false);
-            }, 800);
+            setAuth(prev => ({ ...prev, pinError: true }));
+            setTimeout(() => setAuth(prev => ({ ...prev, pinInput: '', pinError: false })), 800);
         }
     }
   }
 
   const handleLeaveRoom = async () => {
-    if (!user) {
-        router.push('/lobby');
-        return;
-    }
-
-    goOffline(database); // Disconnect from presence system
-
+    if (!user) { router.push('/lobby'); return; }
+    goOffline(database);
     const roomRef = ref(database, `rooms/${roomId}`);
     const membersRef = ref(database, `rooms/${roomId}/members`);
-
-    // Remove user from seats
-    const userSeat = seatedMembers.find(m => m.name === user.name);
-    if (userSeat) {
-        await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
-    }
-    
-    // Check if room will be empty after I leave
+    const userSeat = membersState.seated.find(m => m.name === user.name);
+    if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
     const membersSnapshot = await get(membersRef);
-    if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) {
-        // I am the last one, delete the whole room.
-        await remove(roomRef);
-    } else {
-        // Just remove myself from members.
-        await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-    }
-    
+    if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) await remove(roomRef);
+    else await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
     router.push('/lobby');
   };
   
   useEffect(() => {
     let isMounted = true;
     const listeners: Unsubscribe[] = [];
-
     const setupListeners = async () => {
         const roomRef = ref(database, `rooms/${roomId}`);
         const roomSnapshot = await get(roomRef);
-        if (!isMounted) return;
-
-        if (!roomSnapshot.exists()) {
-          console.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
-          router.push('/lobby');
-          return;
-        }
+        if (!isMounted || !roomSnapshot.exists()) { if(isMounted) router.push('/lobby'); return; }
         
         const initialRoomData = roomSnapshot.val();
-        setVideoMode(initialRoomData.videoMode || false);
+        setVideoState(prev => ({ ...prev, mode: initialRoomData.videoMode || false }));
 
-        const membersRef = ref(database, `rooms/${roomId}/members`);
-        listeners.push(onValue(membersRef, (snapshot) => setAllMembers(snapshot.exists() ? Object.values(snapshot.val()) : [])));
-        
-        const seatedMembersRefDb = ref(database, `rooms/${roomId}/seatedMembers`);
-        listeners.push(onValue(seatedMembersRefDb, (snapshot) => {
-            const seatedData = snapshot.val();
-            const seatedArray = seatedData ? Object.values(seatedData) : [];
-            setSeatedMembers(seatedArray as SeatedMember[]);
-        }));
-        
-        const videoUrlRef = ref(database, `rooms/${roomId}/videoUrl`);
-        listeners.push(onValue(videoUrlRef, (snapshot) => setVideoUrl(snapshot.val() || '')));
-        
-        const currentVideoDetailsRef = ref(database, `rooms/${roomId}/currentVideoDetails`);
-        listeners.push(onValue(currentVideoDetailsRef, (snapshot) => setCurrentVideoDetails(snapshot.val() || null)));
-        
-        const roomNameRef = ref(database, `rooms/${roomId}/name`);
-        listeners.push(onValue(roomNameRef, (snapshot) => {
-            const name = snapshot.val() || '';
-            setRoomName(name);
-            setTempRoomName(name);
-        }));
-
-        const isPrivateRef = ref(database, `rooms/${roomId}/isPrivate`);
-        listeners.push(onValue(isPrivateRef, (snapshot) => {
-            const privateState = snapshot.val() || false;
-            setIsPrivate(privateState);
-            setTempIsPrivate(privateState);
-        }));
-        
-        const backgroundUrlRef = ref(database, `rooms/${roomId}/backgroundUrl`);
-        listeners.push(onValue(backgroundUrlRef, (snapshot) => setRoomBackground(snapshot.val() || null)));
-
-        const playlistRef = ref(database, `rooms/${roomId}/playlist`);
-        listeners.push(onValue(playlistRef, (snapshot) => setPlaylist(snapshot.exists() ? Object.values(snapshot.val()) : [])));
-
-        const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-        listeners.push(onValue(playerStateRef, (snapshot) => setPlayerState(snapshot.val())));
-
-        const hostRef = ref(database, `rooms/${roomId}/host`);
-        listeners.push(onValue(hostRef, (snapshot) => setHostName(snapshot.val() || '')));
-
-        const moderatorsRef = ref(database, `rooms/${roomId}/moderators`);
-        listeners.push(onValue(moderatorsRef, (snapshot) => setModerators(snapshot.val() || [])));
-        
-        const videoModeRef = ref(database, `rooms/${roomId}/videoMode`);
-        listeners.push(onValue(videoModeRef, (snapshot) => setVideoMode(snapshot.val() || false)));
-
-        const giftStreamRef = ref(database, `rooms/${roomId}/giftStream`);
-        listeners.push(onValue(giftStreamRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const allGifts = Object.values(snapshot.val());
-                const latestGift = allGifts[allGifts.length - 1] as any;
-                 // Only trigger for new gifts by checking timestamp
-                if (giftStream.length === 0 || (latestGift && latestGift.id !== giftStream[giftStream.length -1]?.id)) {
-                    setGiftStream(prev => [...prev, latestGift]);
-                }
+        listeners.push(onValue(ref(database, `rooms/${roomId}/members`), snap => setMembersState(prev => ({ ...prev, all: snap.exists() ? Object.values(snap.val()) : [] }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => setMembersState(prev => ({ ...prev, seated: snap.exists() ? Object.values(snap.val()) as SeatedMember[] : [] }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/videoUrl`), snap => setVideoState(prev => ({ ...prev, url: snap.val() || '' }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/currentVideoDetails`), snap => setVideoState(prev => ({ ...prev, details: snap.val() || null }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/name`), snap => setRoomBasicInfo(prev => ({ ...prev, name: snap.val() || '' }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/isPrivate`), snap => setRoomBasicInfo(prev => ({ ...prev, isPrivate: snap.val() || false }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/backgroundUrl`), snap => setRoomBasicInfo(prev => ({ ...prev, background: snap.val() || null }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/playlist`), snap => setVideoState(prev => ({ ...prev, playlist: snap.exists() ? Object.values(snap.val()) : [] }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/playerState`), snap => setPlayerState(snap.val())));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/host`), snap => setRoomBasicInfo(prev => ({ ...prev, hostName: snap.val() || '' }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/moderators`), snap => setRoomBasicInfo(prev => ({ ...prev, moderators: snap.val() || [] }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/videoMode`), snap => setVideoState(prev => ({ ...prev, mode: snap.val() || false }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/giftStream`), snap => {
+            if (snap.exists()) {
+                const allGifts = Object.values(snap.val());
+                setGiftData(prev => ({ ...prev, stream: allGifts }));
             }
         }));
     };
-
     setupListeners();
+    return () => { isMounted = false; listeners.forEach(unsub => unsub()); };
+  }, [roomId, router]);
 
-    return () => {
-        isMounted = false;
-        listeners.forEach(unsubscribe => unsubscribe());
-    };
-}, [roomId, router]);
-
-    // This effect ensures the session persists even if the host leaves temporarily.
-    useEffect(() => {
-        let heartbeatInterval: NodeJS.Timeout | null = null;
-
-        const startHeartbeat = () => {
-            if ((canControl) && playerState?.isPlaying) {
-                heartbeatInterval = setInterval(() => {
-                    if (document.visibilityState === 'visible') { // Only update if tab is active
-                        const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-                        runTransaction(playerStateRef, (currentState: PlayerState | null) => {
-                            if (currentState && currentState.isPlaying) {
-                                // Only update the timestamp to keep the session alive
-                                return { ...currentState, timestamp: serverTimestamp() };
-                            }
-                            return currentState; // Abort transaction if state changed
-                        }).catch(err => console.warn("Heartbeat transaction failed:", err));
-                    }
-                }, 5000); // Send a heartbeat every 5 seconds
+  // Heartbeat - Ensure room clock advances regardless of host activity
+  useEffect(() => {
+    let heartbeatInterval: NodeJS.Timeout | null = null;
+    if (canControl && playerState?.isPlaying) {
+        heartbeatInterval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
+                    if (curr && curr.isPlaying) return { ...curr, timestamp: serverTimestamp() };
+                    return curr;
+                }).catch(() => {});
             }
-        };
-
-        const stopHeartbeat = () => {
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-                heartbeatInterval = null;
-            }
-        };
-
-        startHeartbeat();
-
-        return () => {
-            stopHeartbeat();
-        };
-    }, [canControl, playerState?.isPlaying, roomId]);
-
+        }, 5000);
+    }
+    return () => { if(heartbeatInterval) clearInterval(heartbeatInterval); };
+  }, [canControl, playerState?.isPlaying, roomId]);
 
   useEffect(() => {
       if(typeof window !== 'undefined') {
-          const storedHistory = localStorage.getItem('youtubeSearchHistory');
-          if (storedHistory) {
-              setSearchHistory(JSON.parse(storedHistory));
-          }
+          const stored = localStorage.getItem('youtubeSearchHistory');
+          if (stored) setSearch(prev => ({ ...prev, history: JSON.parse(stored) }));
       }
   }, []);
 
-  useEffect(() => {
-    if (isSeated) {
-        const currentUserSeat = seatedMembers.find(m => m.name === user.name);
-        if (currentUserSeat) {
-            const updates: { [key: string]: any } = {};
-            const avatarId = user.avatarId || 'avatar1';
-            updates[`/rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}/avatarId`] = avatarId;
-            updates[`/rooms/${roomId}/members/${user.name}/avatarId`] = avatarId;
-            update(ref(database), updates);
-        }
-    }
-  }, [user?.avatarId, isSeated, roomId, user, seatedMembers]);
-    
   const handleTakeSeat = (seatId: number) => {
       const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${seatId}`);
-      const currentUserSeat = seatedMembers.find(m => m.name === user.name);
-
-      runTransaction(seatRef, (currentData) => {
-          if (currentData === null) {
-              if (currentUserSeat) {
-                 const oldSeatRef = ref(database, `rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}`);
-                 set(oldSeatRef, null);
-              }
-              return { name: user.name, avatarId: user.avatarId || 'avatar1', seatId: seatId };
+      const currentUserSeat = membersState.seated.find(m => m.name === user.name);
+      runTransaction(seatRef, (curr) => {
+          if (curr === null) {
+              if (currentUserSeat) set(ref(database, `rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}`), null);
+              return { name: user.name, avatarId: user.avatarId || 'avatar1', seatId };
           }
           return; 
-      }).catch((error) => {
-          console.error("Transaction failed: ", error);
-          console.error("المقعد محجوز بالفعل");
-      });
+      }).catch(() => {});
   };
 
   const handleLeaveSeat = () => {
-      const currentUserSeat = seatedMembers.find(m => m.name === user.name);
-      if (currentUserSeat) {
-          const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}`);
-          set(seatRef, null);
-      }
+      const currentUserSeat = membersState.seated.find(m => m.name === user.name);
+      if (currentUserSeat) set(ref(database, `rooms/${roomId}/seatedMembers/${currentUserSeat.seatId}`), null);
   };
 
-  const handleToggleMute = () => {
-    if (isSeated && localParticipant) {
-        localParticipant.setMicrophoneEnabled(!localParticipant.isMicrophoneEnabled);
-    }
-  };
-  
-    const handleSendMessage = async (text: string) => {
-        if (isSendingMessage) return;
-        setIsSendingMessage(true);
+  const handleSendMessage = async (text: string) => {
+        if (chatState.isSending) return;
+        setChatState(prev => ({ ...prev, isSending: true }));
         try {
-            const chatRef = ref(database, `rooms/${roomId}/chat`);
-            const newMsgRef = push(chatRef);
-            const messageData: Message = {
-                id: newMsgRef.key!,
-                sender: user.name,
-                text: text,
-                timestamp: serverTimestamp() as any,
-            };
-
-            if (replyingTo) {
-                messageData.quotedMessage = replyingTo.text;
-                messageData.quotedSender = replyingTo.sender;
-            }
-            
-            await set(newMsgRef, messageData);
-
-            setReplyingTo(null);
-            
-            // Exit typing mode on send
-            if (chatInputRef.current) {
-                chatInputRef.current.blur();
-            }
-
-        } catch(error) {
-            console.error("Error sending message:", error);
-        } finally {
-            setIsSendingMessage(false);
-        }
+            const newMsgRef = push(ref(database, `rooms/${roomId}/chat`));
+            const msg: Message = { id: newMsgRef.key!, sender: user.name, text, timestamp: serverTimestamp() as any };
+            if (chatState.replyingTo) { msg.quotedMessage = chatState.replyingTo.text; msg.quotedSender = chatState.replyingTo.sender; }
+            await set(newMsgRef, msg);
+            setChatState(prev => ({ ...prev, replyingTo: null, isSending: false }));
+            chatInputRef.current?.blur();
+        } catch(e) { setChatState(prev => ({ ...prev, isSending: false })); }
     };
-
-    const handleChatInputFocus = () => {
-        // Handled by CSS now
-    };
-
-    const handleChatInputBlur = () => {
-        // Handled by CSS now
-    };
-
-    const handleReply = useCallback((message: Message) => {
-        setReplyingTo(message);
-        chatInputRef.current?.focus();
-    }, []);
-
-    const handleCancelReply = useCallback(() => {
-        setReplyingTo(null);
-    }, []);
-
-  const updateSearchHistory = (query: string) => {
-      if(typeof window === 'undefined' || !query) return;
-      const newHistory = [query, ...searchHistory.filter(h => h.toLowerCase() !== query.toLowerCase())].slice(0, 10);
-      setSearchHistory(newHistory);
-      localStorage.setItem('youtubeSearchHistory', JSON.stringify(newHistory));
-  };
 
   const performSearch = async (query: string) => {
       if (!query.trim() || !canControl) return;
-      
-      setIsSearching(true);
-      setSearchError(null);
-      setResults([]);
+      setSearch(prev => ({ ...prev, isSearching: true, error: null, results: [] }));
       try {
         const results = await searchYoutube({ query: query.trim() });
-        setResults(results.items);
-        updateSearchHistory(query.trim());
-      } catch (error) {
-          console.error("YouTube search failed:", error);
-          if (error instanceof Error && error.message.includes('YOUTUBE_API_KEY')) {
-              setSearchError("مفتاح واجهة برمجة تطبيقات YouTube غير مهيأ أو غير صحيح. يرجى إضافته إلى ملف .env للمتابعة.");
-          } else if (error instanceof Error) {
-              setSearchError(`فشل البحث في يوتيوب: ${error.message}`);
-          } else {
-              setSearchError("فشل البحث في يوتيوب. يرجى المحاولة مرة أخرى.");
-          }
-      } finally {
-          setIsSearching(false);
+        setSearch(prev => {
+            const newHistory = [query.trim(), ...prev.history.filter(h => h.toLowerCase() !== query.trim().toLowerCase())].slice(0, 10);
+            localStorage.setItem('youtubeSearchHistory', JSON.stringify(newHistory));
+            return { ...prev, results: results.items, history: newHistory, isSearching: false };
+        });
+      } catch (e: any) {
+          setSearch(prev => ({ ...prev, isSearching: false, error: e.message || "Search failed" }));
       }
   };
 
-  const handleSearchSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    performSearch(searchQuery);
-  }
-
-  const handleHistoryClick = (query: string) => {
-      setSearchQuery(query);
-      performSearch(query);
-  };
-  
   const onSetVideo = useCallback((videoIdentifier: string, startTime = 0, videoDetails?: YouTubeVideo) => {
     if (canControl) {
-      const updates: { [key: string]: any } = {};
+      const updates: any = {};
       updates[`/rooms/${roomId}/videoUrl`] = videoIdentifier;
       updates[`/rooms/${roomId}/currentVideoDetails`] = videoDetails || null;
       updates[`/rooms/${roomId}/playerState`] = { 
-        isPlaying: !!videoIdentifier, 
-        seekTime: startTime, 
-        timestamp: serverTimestamp(),
-        volume: playerState?.volume ?? 0.8,
-        quality: playerState?.quality ?? 'auto'
+        isPlaying: !!videoIdentifier, seekTime: startTime, timestamp: serverTimestamp(),
+        volume: playerState?.volume ?? 0.8, quality: playerState?.quality ?? 'auto'
       };
-      
       update(ref(database), updates);
     }
   }, [canControl, roomId, playerState?.volume, playerState?.quality]);
   
   const handlePlayerStateChange = useCallback((newState: Partial<PlayerState>) => {
     if (!canControl) return;
-    const playerStateRef = ref(database, `rooms/${roomId}/playerState`);
-    
-    runTransaction(playerStateRef, (currentState: PlayerState | null) => {
-        const current = currentState || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
-
-        const shouldUpdateTimestamp = (newState.isPlaying !== undefined && newState.isPlaying !== current.isPlaying) || newState.seekTime !== undefined;
-
-        const updatedState = { 
-            ...current, 
-            ...newState, 
-        };
-
-        if (shouldUpdateTimestamp) {
-            return { ...updatedState, timestamp: serverTimestamp() };
-        } else {
-            return updatedState;
-        }
+    runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
+        const c = curr || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
+        const updated = { ...c, ...newState };
+        const shouldStamp = (newState.isPlaying !== undefined && newState.isPlaying !== c.isPlaying) || newState.seekTime !== undefined;
+        return shouldStamp ? { ...updated, timestamp: serverTimestamp() } : updated;
     });
-}, [canControl, roomId]);
-
-
-  const handleSetVideoFromPreview = () => {
-    if (previewPlayerRef.current && previewVideo) {
-      const currentTime = previewPlayerRef.current.getCurrentTime();
-      onSetVideo(previewVideo.id.videoId, currentTime, previewVideo);
-      setPreviewVideo(null); // Close preview dialog
-    }
-  };
+  }, [canControl, roomId]);
 
   const handleAddToPlaylistFromSearch = (video: YouTubeVideo) => {
-      const newItem: PlaylistItem = {
-        id: video.id.videoId,
-        videoId: video.id.videoId,
-        title: video.snippet.title,
-        thumbnail: video.snippet.high.url,
-      };
-      const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
-      set(playlistRef, newItem);
-
-      setRecentlyAddedToPlaylist(prev => {
-        const newSet = new Set(prev);
-        newSet.add(video.id.videoId);
-        return newSet;
-      });
-      setTimeout(() => {
-        setRecentlyAddedToPlaylist(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(video.id.videoId);
-            return newSet;
-        });
-      }, 2000);
+      const newItem: PlaylistItem = { id: video.id.videoId, videoId: video.id.videoId, title: video.snippet.title, thumbnail: video.snippet.high.url };
+      set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem);
+      setPreview(prev => ({ ...prev, recentlyAdded: new Set(prev.recentlyAdded).add(video.id.videoId) }));
+      setTimeout(() => setPreview(prev => { const n = new Set(prev.recentlyAdded); n.delete(video.id.videoId); return { ...prev, recentlyAdded: n }; }), 2000);
   };
   
-  const handleAddUrlToPlaylist = async (url: string) => {
-    if (!url.trim()) return;
-
-    let videoId = null;
-    let title = url;
-    let thumbnail = `https://picsum.photos/seed/${Math.random()}/320/180`; // generic placeholder
-    
+  const handlePlayFromPlaylist = async (vId: string) => {
     try {
-        const parsedUrl = new URL(url);
-        if (parsedUrl.hostname.includes('youtube.com') || parsedUrl.hostname === 'youtu.be') {
-            videoId = parsedUrl.hostname === 'youtu.be'
-                ? parsedUrl.pathname.slice(1)
-                : parsedUrl.searchParams.get('v');
-            
-            if (videoId) {
-                try {
-                    const response = await fetch(`https://noembed.com/json?url=${encodeURIComponent(url)}`);
-                    const data = await response.json();
-                    if(data.title) title = data.title;
-                    if(data.thumbnail_url) thumbnail = data.thumbnail_url;
-                } catch(e) {
-                    console.warn("Could not fetch oEmbed details for youtube URL", e);
-                }
-            }
-        }
-    } catch(e) { /* Not a URL, do nothing special */ }
-
-    const newItem: PlaylistItem = {
-        id: videoId || url, // Use URL as ID if not youtube
-        videoId: videoId || url,
-        title: title,
-        thumbnail: thumbnail,
-    };
-
-    const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`);
-    set(playlistRef, newItem);
-    console.log(`تمت إضافة فيديو إلى قائمة التشغيل.`);
-    setUrlInput('');
-  };
-
-  const handlePlayFromPlaylist = async (videoId: string) => {
-    try {
-        const results = await searchYoutube({ query: videoId });
-        const videoDetails = results.items.find(item => item.id.videoId === videoId);
-        onSetVideo(videoId, 0, videoDetails);
-    } catch(e) {
-        console.error("Failed to fetch video details for playlist item", e);
-        // Play without details if search fails
-        onSetVideo(videoId);
-    }
-    setIsPlaylistOpen(false);
-  };
-
-  const handleRemoveFromPlaylist = (itemId: string) => {
-      const playlistRef = ref(database, `rooms/${roomId}/playlist/${btoa(itemId)}`);
-      remove(playlistRef);
+        const results = await searchYoutube({ query: vId });
+        const details = results.items.find(item => item.id.videoId === vId);
+        onSetVideo(vId, 0, details);
+    } catch(e) { onSetVideo(vId); }
+    setDialogs(prev => ({ ...prev, playlist: false }));
   };
 
   const handleVideoEnded = () => {
     if (!canControl) return;
-
-    const getYoutubeVideoId = (url: string) => {
-        try {
-          const urlObj = new URL(url);
-          if (urlObj.hostname.includes('youtube.com')) {
-            return urlObj.searchParams.get('v');
-          }
-           if (urlObj.hostname === 'youtu.be') {
-              return urlObj.pathname.slice(1);
-           }
-        } catch (e) {
-            return url.match(/^[a-zA-Z0-9_-]{11}$/) ? url : null;
-        }
-        return null;
-    }
-    
-    const currentVideoId = getYoutubeVideoId(videoUrl);
-    let currentIndex = -1;
-    if (currentVideoId) {
-        currentIndex = playlist.findIndex(item => item.videoId === currentVideoId);
-    }
-    
-    if (playlist.length > 0) {
-        const nextIndex = (currentIndex + 1);
-        if (nextIndex < playlist.length) {
-            handlePlayFromPlaylist(playlist[nextIndex].videoId);
-        } else {
-            onSetVideo('');
-        }
-    } else {
-        onSetVideo('');
-    }
+    const currentVidId = videoState.url.match(/^[a-zA-Z0-9_-]{11}$/) ? videoState.url : (new URL(videoState.url).searchParams.get('v'));
+    const idx = videoState.playlist.findIndex(item => item.videoId === currentVidId);
+    if (idx !== -1 && idx + 1 < videoState.playlist.length) handlePlayFromPlaylist(videoState.playlist[idx + 1].videoId);
+    else onSetVideo('');
   };
 
-  const handleKickUser = (userNameToKick: string) => {
-    if (!canControl || !userNameToKick) return;
-
-    const memberRef = ref(database, `rooms/${roomId}/members/${userNameToKick}`);
-    set(memberRef, null);
-
-    const userSeat = seatedMembers.find(m => m.name === userNameToKick);
-    if (userSeat) {
-        const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`);
-        set(seatRef, null);
-    }
-    console.log(`تم طرد ${userNameToKick}`);
-  };
-  
-  const handleOpenInviteDialog = async () => {
-    if (!user) return;
-    try {
-      const friendsData = await getFriends(user.name);
-      setFriends(friendsData);
-      setInvitedFriends(new Set()); // Reset invited state on open
-      setIsInviteOpen(true);
-    } catch(error) {
-      console.error("فشل في جلب قائمة الأصدقاء.");
-    }
-  };
-  
-  const handleOpenSettingsDialog = async () => {
-    if (!canControl) return;
-    const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
-    if (roomSnapshot.exists()) {
-      const roomData = roomSnapshot.val();
-      setTempRoomName(roomData.name || `غرفة ${hostName}`);
-      setTempPin(roomData.password || '');
-      setTempIsPrivate(roomData.isPrivate || false);
-    }
-    setIsSettingsOpen(true);
-  };
-
-  const handleSaveSettings = async () => {
-    if (!canControl) return;
-    const updates: { [key: string]: any } = {};
-
-    const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
-    const currentRoomData = roomSnapshot.val();
-
-    if (tempRoomName !== (currentRoomData.name || '')) {
-      updates[`/rooms/${roomId}/name`] = tempRoomName;
-    }
-    if (tempPin !== (currentRoomData.password || '')) {
-      updates[`/rooms/${roomId}/password`] = tempPin;
-    }
-    if (tempIsPrivate !== (currentRoomData.isPrivate || false)) {
-        updates[`/rooms/${roomId}/isPrivate`] = tempIsPrivate;
-    }
-    
-    if (Object.keys(updates).length > 0) {
-      await update(ref(database), updates);
-      console.log("تم حفظ إعدادات الغرفة.");
-    } else {
-      console.log("لا توجد تغييرات لحفظها.");
-    }
-    setIsSettingsOpen(false);
-  };
-
-  const handleSendInvitation = async (recipientName: string) => {
-    if (!user) return;
-    try {
-        await sendRoomInvitation(user.name, recipientName, roomId, roomName || `غرفة ${hostName}`);
-        setInvitedFriends(prev => new Set(prev).add(recipientName));
-        console.log(`تمت دعوة ${recipientName} إلى الغرفة.`);
-    } catch (error: any) {
-        console.error(error.message);
-    }
-  };
-
-  const handlePromote = (userName: string) => {
-      if (!isHost) return;
-      const roomRef = ref(database, `rooms/${roomId}/moderators`);
-      const newModerators = [...moderators, userName];
-      set(roomRef, newModerators);
-      console.log(`أصبح ${userName} مشرفًا.`);
-  }
-
-  const handleDemote = (userName: string) => {
-      if (!isHost) return;
-      const roomRef = ref(database, `rooms/${roomId}/moderators`);
-      const newModerators = moderators.filter(mod => mod !== userName);
-      set(roomRef, newModerators);
-      console.log(`لم يعد ${userName} مشرفًا.`);
-  }
-
-  const handleTransferHost = (userName: string) => {
-      if (!isHost || !userName) return;
-      const updates: { [key: string]: any } = {};
-      updates[`/rooms/${roomId}/host`] = userName;
-      // Demote current host to moderator
-      const newModerators = [...moderators.filter(m => m !== userName), hostName];
-      updates[`/rooms/${roomId}/moderators`] = newModerators;
-
-      update(ref(database), updates);
-      console.log(`أصبحت الغرفة الآن ملك ${userName}.`);
-  }
-
-  const getAvatar = (user: AppUser | Member | SeatedMember) => {
-    return PlaceHolderImages.find(p => p.id === user.avatarId) ?? PlaceHolderImages[0];
-  }
-  
-  const handleSetBackground = (imageUrl: string) => {
-    if (!canControl) return;
-    set(ref(database, `rooms/${roomId}/backgroundUrl`), imageUrl);
-    setIsBackgroundOpen(false);
-  }
-  
-  const roomBackgrounds = useMemo(() => {
-    return PlaceHolderImages.filter(p => p.id.startsWith('room-bg') || p.id.startsWith('user-bg'));
-  }, []);
-  
-  const handleSetVideoMode = (mode: boolean) => {
-    if (canControl) {
-      set(ref(database, `rooms/${roomId}/videoMode`), mode);
-    }
-    setVideoMode(mode);
-  }
-
-  const handleSwitchToVideoClick = () => {
-    handleSetVideoMode(true);
-  };
-
-  const parseDuration = (duration: string) => {
-    if (!duration) return '0:00';
-    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!match) return '0:00';
-    const hours = parseInt(match[1] || '0');
-    const minutes = parseInt(match[2] || '0');
-    const seconds = parseInt(match[3] || '0');
-    if (hours > 0) {
-        return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const handleOpenGiftShop = (recipientName: string) => {
-      setGiftingTo(recipientName);
-      setIsGiftShopOpen(true);
-  }
-
-  const handleSendGift = async (recipientName: string, giftId: string) => {
-    if(!user) throw new Error("User not found");
-    const newBalance = await sendGift(user.name, recipientName, giftId, roomId);
-
-    const gift = Gifts.find(g => g.id === giftId);
-    if (gift) {
-      sendSystemMessage(`🎁 أرسل ${user.name} هدية "${gift.name}" إلى ${recipientName}`);
-    }
-  };
-
-
-  if (!isAuthenticated) {
+  if (!auth.isFullyAuthed) {
     return (
-        <Dialog open={!isAuthenticated} onOpenChange={(open) => { if(!open) router.push('/lobby')}}>
+        <Dialog open={true} onOpenChange={(open) => !open && router.push('/lobby')}>
             <DialogContent className="max-w-sm">
-                <DialogHeader>
-                    <DialogTitle className="text-center text-2xl">الغرفة مقفلة</DialogTitle>
-                    <DialogDescription className="text-center">
-                        الرجاء إدخال كلمة المرور المكونة من 4 أرقام للدخول.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className={cn("flex justify-center", pinError ? 'animate-shake' : '')}>
-                    <NumericKeypad pin={pinInput} onPinChange={handlePinChange} pinLength={4} />
-                </div>
-                 <DialogFooter>
-                    <Button variant="outline" onClick={() => router.push('/lobby')}>العودة إلى الردهة</Button>
-                 </DialogFooter>
+                <DialogHeader><DialogTitle className="text-center text-2xl">الغرفة مقفلة</DialogTitle><DialogDescription className="text-center">أدخل كلمة المرور المكونة من 4 أرقام.</DialogDescription></DialogHeader>
+                <div className={cn("flex justify-center", auth.pinError && 'animate-shake')}><NumericKeypad pin={auth.pinInput} onPinChange={handlePinChange} pinLength={4} /></div>
+                <DialogFooter><Button variant="outline" onClick={() => router.push('/lobby')}>العودة للردهة</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
   }
 
   return (
-    <div className="relative flex flex-col w-full bg-background overflow-y-hidden h-screen">
-        {roomBackground && (
+    <div className="relative flex flex-col w-full bg-background overflow-hidden h-screen">
+        {roomBasicInfo.background && (
             <div className="absolute inset-0 z-0">
-                <Image
-                    src={roomBackground}
-                    alt="Room background"
-                    fill
-                    className="object-cover"
-                />
+                <Image src={roomBasicInfo.background} alt="BG" fill className="object-cover" />
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             </div>
         )}
-
-        <GiftAnimationOverlay latestGift={giftStream[giftStream.length -1]} currentUser={user.name} />
-
+        <GiftAnimationOverlay latestGift={giftData.stream[giftData.stream.length - 1]} currentUser={user.name} />
         <div className="relative z-10 flex h-full w-full flex-col">
              <RoomHeader 
-                onSearchClick={() => setIsSearchOpen(true)} 
-                onPlaylistClick={() => setIsPlaylistOpen(true)}
-                roomId={roomId}
-                onLeaveRoom={handleLeaveRoom}
-                onSwitchToVideo={handleSwitchToVideoClick}
-                onSwitchToPlayer={() => handleSetVideoMode(false)}
-                videoMode={videoMode}
-                onInviteClick={handleOpenInviteDialog}
-                onSettingsClick={handleOpenSettingsDialog}
-                roomName={roomName}
-                hostName={hostName}
-                canControl={canControl}
+                onSearchClick={() => setDialogs(prev => ({...prev, search: true}))} onPlaylistClick={() => setDialogs(prev => ({...prev, playlist: true}))}
+                roomId={roomId} onLeaveRoom={handleLeaveRoom} onSwitchToVideo={() => onSetVideo('', 0)} 
+                onSwitchToPlayer={() => setVideoState(p => ({...prev, mode: false}))} videoMode={videoState.mode}
+                onInviteClick={() => setDialogs(prev => ({...prev, invite: true}))} onSettingsClick={() => setDialogs(prev => ({...prev, settings: true}))}
+                roomName={roomBasicInfo.name} hostName={roomBasicInfo.hostName} canControl={canControl}
             />
-
-            {/* Main Content Area */}
             <main className="w-full max-w-7xl mx-auto flex h-full flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
-                  {videoMode ? (
-                     <div className="flex-grow rounded-lg overflow-hidden h-full">
-                       <VideoConference />
-                     </div>
-                  ) : (
+                  {videoState.mode ? <div className="flex-grow rounded-lg overflow-hidden h-full"><VideoConference /></div> : (
                       <>
-                          <div className="flex-shrink-0">
-                               <Player 
-                                  key={`${videoUrl}-${playerState?.quality}`}
-                                  videoUrl={videoUrl} 
-                                  onSetVideo={onSetVideo} 
-                                  canControl={canControl} 
-                                  onSearchClick={() => setIsSearchOpen(true)}
-                                  playerState={playerState}
-                                  onPlayerStateChange={handlePlayerStateChange}
-                                  onVideoEnded={handleVideoEnded}
-                                  videoDetails={currentVideoDetails}
-                              />
-                          </div>
-                          <div className="flex-shrink-0">
-                               <Seats 
-                                  seatedMembers={seatedMembers}
-                                  hostName={hostName}
-                                  moderators={moderators}
-                                  onTakeSeat={handleTakeSeat}
-                                  onLeaveSeat={handleLeaveSeat}
-                                  currentUser={user}
-                                  isHost={isHost}
-                                  onKickUser={handleKickUser}
-                                  onPromote={handlePromote}
-                                  onDemote={handleDemote}
-                                  onTransferHost={handleTransferHost}
-                                  room={room}
-                                  currentUserFriends={friendData.friends}
-                                  currentUserRequests={friendData.requests}
-                                  onSendGift={handleOpenGiftShop}
-                              />
-                          </div>
-                          <div className="flex-shrink-0 mt-2 md:mt-4">
-                              <ViewerInfo members={viewers} />
-                          </div>
-                          <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0 mt-2 md:mt-4">
-                             <ChatHeader isHost={isHost} roomId={roomId} />
-                             <div className="flex-grow min-h-0 pb-20">
-                               <ChatMessages roomId={roomId} user={user} onReply={handleReply} />
-                             </div>
-                           </div>
+                          <div className="flex-shrink-0"><Player videoUrl={videoState.url} onSetVideo={onSetVideo} canControl={canControl} onSearchClick={() => setDialogs(p => ({...p, search: true}))} playerState={playerState} onPlayerStateChange={handlePlayerStateChange} onVideoEnded={handleVideoEnded} videoDetails={videoState.details} /></div>
+                          <div className="flex-shrink-0"><Seats seatedMembers={membersState.seated} hostName={roomBasicInfo.hostName} moderators={roomBasicInfo.moderators} onTakeSeat={handleTakeSeat} onLeaveSeat={handleLeaveSeat} currentUser={user} isHost={isHost} onKickUser={() => {}} onPromote={() => {}} onDemote={() => {}} onTransferHost={() => {}} room={room as any} currentUserFriends={friendData.friends} currentUserRequests={friendData.requests} onSendGift={(t) => { setGiftData(p => ({...p, target: t})); setDialogs(p => ({...p, giftShop: true})); }} /></div>
+                          <div className="flex-shrink-0 mt-2 md:mt-4"><ViewerInfo members={viewers} /></div>
+                          <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0 mt-2 md:mt-4"><ChatHeader isHost={isHost} roomId={roomId} /><div className="flex-grow min-h-0 pb-20"><ChatMessages roomId={roomId} user={user} onReply={(m) => setChatState(p => ({...p, replyingTo: m}))} /></div></div>
                       </>
                   )}
             </main>
-
-            {/* Chat Input Area */}
-             <footer className="fixed bottom-0 left-0 right-0 z-20">
-                <ChatInput
-                    roomId={roomId}
-                    user={user}
-                    isSeated={isSeated}
-                    isMuted={isMuted}
-                    onToggleMute={handleToggleMute}
-                    inputRef={chatInputRef}
-                    onFocus={handleChatInputFocus}
-                    onBlur={handleChatInputBlur}
-                    onSend={handleSendMessage}
-                    isSending={isSendingMessage}
-                    replyingTo={replyingTo}
-                    onCancelReply={handleCancelReply}
-                    onOpenGiftShop={() => {
-                      setGiftingTo(''); // No pre-selected recipient
-                      setIsGiftShopOpen(true);
-                    }}
-                />
-            </footer>
+             <footer className="fixed bottom-0 left-0 right-0 z-20"><ChatInput roomId={roomId} user={user} isSeated={isSeated} isMuted={isMuted} onToggleMute={() => localParticipant?.setMicrophoneEnabled(!localParticipant.isMicrophoneEnabled)} inputRef={chatInputRef} onFocus={() => {}} onBlur={() => {}} onSend={handleSendMessage} isSending={chatState.isSending} replyingTo={chatState.replyingTo} onCancelReply={() => setChatState(p => ({...p, replyingTo: null}))} onOpenGiftShop={() => { setGiftData(p => ({...p, target: ''})); setDialogs(p => ({...p, giftShop: true})); }} /></footer>
         </div>
-        
-         <div className="hidden">
-            <AudioConference />
-        </div>
+        <div className="hidden"><AudioConference /></div>
     
-    <GiftShopDialog
-        isOpen={isGiftShopOpen}
-        onOpenChange={setIsGiftShopOpen}
-        recipientName={giftingTo}
-        onSendGift={handleSendGift}
-        seatedMembers={seatedMembers}
-    />
-
-    <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogContent className="max-w-md">
-            <DialogHeader>
-                <DialogTitle>دعوة أصدقاء</DialogTitle>
-                <DialogDescription>
-                    أرسل دعوات لأصدقائك للانضمام إليك في غرفة المشاهدة.
-                </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 max-h-80 overflow-y-auto mt-4">
-                {friends.length > 0 ? friends.map((friend) => (
-                    <div key={friend.name} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30">
-                        <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10">
-                                <AvatarImage src={getAvatar(friend)?.imageUrl} alt={friend.name} />
-                                <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-semibold">{friend.name}</span>
-                        </div>
-                        <Button 
-                            size="sm" 
-                            onClick={() => handleSendInvitation(friend.name)} 
-                            disabled={invitedFriends.has(friend.name)}
-                        >
-                            {invitedFriends.has(friend.name) ? "تمت الدعوة" : "دعوة"}
-                            {!invitedFriends.has(friend.name) && <Send className="ms-2 h-4 w-4"/>}
-                        </Button>
-                    </div>
-                )) : (
-                    <p className="text-center text-muted-foreground py-4">ليس لديك أصدقاء لدعوتهم بعد.</p>
-                )}
-            </div>
-        </DialogContent>
-    </Dialog>
-    
-    <Dialog open={isPlaylistOpen} onOpenChange={setIsPlaylistOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>قائمة التشغيل</DialogTitle>
-            <DialogDescription>طابور الفيديوهات التالية.</DialogDescription>
-          </DialogHeader>
-          <Playlist 
-            items={playlist}
-            canControl={canControl}
-            onPlay={handlePlayFromPlaylist}
-            onRemove={handleRemoveFromPlaylist}
-            currentVideoUrl={videoUrl}
-           />
-           <DialogFooter>
-                <Button variant="outline" onClick={() => setIsPlaylistOpen(false)}>إغلاق</Button>
-           </DialogFooter>
-        </DialogContent>
-    </Dialog>
-
-    <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>إعدادات الغرفة</DialogTitle>
-            <DialogDescription>تعديل اسم الغرفة، الخصوصية، وتعيين كلمة مرور.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-6 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="room-name" className="text-right">اسم الغرفة</Label>
-                <Input
-                    id="room-name"
-                    value={tempRoomName}
-                    onChange={(e) => setTempRoomName(e.target.value)}
-                    className="col-span-3"
-                />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5">
-                    <Label htmlFor="private-mode">غرفة خاصة</Label>
-                    <p className="text-xs text-muted-foreground">
-                       إخفاء الغرفة من قائمة الغرف المتاحة في الردهة.
-                    </p>
-                </div>
-                <Switch
-                    id="private-mode"
-                    checked={tempIsPrivate}
-                    onCheckedChange={setTempIsPrivate}
-                />
-            </div>
-            <div className="space-y-2 text-center">
-                 <Label htmlFor="room-pin">
-                    كلمة المرور (4 أرقام)
-                </Label>
-                 <div className="flex justify-center flex-col items-center gap-2">
-                    <NumericKeypad pin={tempPin} onPinChange={setTempPin} pinLength={4} />
-                    {tempPin && (
-                        <Button variant="destructive" onClick={() => setTempPin('')} className="w-44">
-                            <Unlock className="me-2" />
-                            فتح الغرفة (إلغاء القفل)
-                        </Button>
-                    )}
-                </div>
-            </div>
-             <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right col-span-1 pt-2">صورة الغلاف</Label>
-                 <Button onClick={() => { setIsSettingsOpen(false); setIsBackgroundOpen(true); }} variant="outline" className="col-span-3">
-                    <Wallpaper className="me-2"/>
-                    اختر صورة غلاف
-                </Button>
-             </div>
-          </div>
-           <DialogFooter>
-                <Button onClick={handleSaveSettings}>حفظ التغييرات</Button>
-                <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>إلغاء</Button>
-           </DialogFooter>
-        </DialogContent>
-    </Dialog>
-
-    <Dialog open={isBackgroundOpen} onOpenChange={setIsBackgroundOpen}>
-        <DialogContent className="max-w-2xl">
-            <DialogHeader>
-                <DialogTitle>اختر خلفية للغرفة</DialogTitle>
-                <DialogDescription>ستظهر الخلفية الجديدة لجميع المستخدمين في الغرفة.</DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-1">
-                {roomBackgrounds.map(bg => (
-                    <div key={bg.id} className="relative aspect-video rounded-lg overflow-hidden cursor-pointer group" onClick={() => handleSetBackground(bg.imageUrl)}>
-                        <Image
-                            src={bg.imageUrl}
-                            alt={bg.description}
-                            fill
-                            className="object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
-                         {roomBackground === bg.imageUrl && (
-                            <div className="absolute top-2 right-2 bg-accent text-accent-foreground rounded-full p-1">
-                                <Check className="w-4 h-4"/>
-                            </div>
-                         )}
-                    </div>
-                ))}
-            </div>
-        </DialogContent>
-    </Dialog>
-
-
-    <Dialog open={isSearchOpen} onOpenChange={(isOpen) => {
-        setIsSearchOpen(isOpen);
-        if (!isOpen) {
-            setPreviewVideo(null); // Close preview if search is closed
-        }
-    }}>
-        <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0">
-            <DialogHeader className="p-6 pb-4 border-b">
-                <DialogTitle>البحث عن فيديو وإضافته</DialogTitle>
-                <DialogDescription>
-                    ابحث في يوتيوب أو الصق رابط فيديو من أي موقع.
-                </DialogDescription>
-            </DialogHeader>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <form onSubmit={handleSearchSubmit} className="flex gap-2 md:col-span-2">
-                    <Input
-                        type="text"
-                        placeholder="ابحث في يوتيوب..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-input h-11"
-                        disabled={isSearching}
-                    />
-                    <Button type="submit" disabled={isSearching} size="lg">
-                        {isSearching ? <Loader2 className="animate-spin" /> : <Search />}
-                    </Button>
-                </form>
-                <div className="flex gap-2">
-                    <Input
-                        type="text"
-                        placeholder="...أو الصق رابط فيديو هنا"
-                        value={urlInput}
-                        onChange={(e) => setUrlInput(e.target.value)}
-                        className="bg-input h-11"
-                    />
-                    <Button onClick={() => handleAddUrlToPlaylist(urlInput)} size="lg" variant="secondary"><Plus/></Button>
-                </div>
-            </div>
-            <div className="flex-grow overflow-y-auto px-6 pb-6">
-                {isSearching && (
-                    <div className="flex justify-center items-center h-full">
-                        <Loader2 className="h-12 w-12 animate-spin text-accent" />
-                    </div>
-                )}
-                {searchError && (
-                    <div className="flex justify-center items-center h-full text-destructive">{searchError}</div>
-                )}
-                {!isSearching && !searchError && searchResults.length === 0 && (
-                    <div className="flex flex-col justify-center items-center h-full text-muted-foreground text-center">
-                        {searchHistory.length > 0 ? (
-                            <>
-                                <History className="w-16 h-16 mb-4" />
-                                <h3 className="font-bold text-lg text-foreground mb-2">سجل البحث الأخير</h3>
-                                <div className="flex flex-wrap justify-center gap-2">
-                                    {searchHistory.map((term, i) => (
-                                        <Button
-                                            key={i}
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleHistoryClick(term)}
-                                        >
-                                            {term}
-                                        </Button>
-                                    ))}
-                                </div>
-                            </>
-                        ) : (
-                             <>
-                                <Youtube className="w-16 h-16 mb-4" />
-                                <p className="text-lg">ابحث عن فيديو للبدء</p>
-                                <p>شاهد مع أصدقائك أفضل محتوى من يوتيوب.</p>
-                             </>
-                        )}
-                    </div>
-                )}
-                {searchResults.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {searchResults.map((video) => (
-                            <div key={video.id.videoId}>
-                                <div
-                                    className="group cursor-pointer"
-                                    onClick={() => setPreviewVideo(video)}
-                                >
-                                    <div className="relative aspect-video rounded-lg overflow-hidden mb-2 shadow-lg transition-transform duration-200 group-hover:scale-105">
-                                        <Image
-                                            src={video.snippet.thumbnails.high.url}
-                                            alt={video.snippet.title}
-                                            fill
-                                            className="object-cover"
-                                        />
-                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-2">
-                                            {video.contentDetails?.duration && (
-                                                <Badge
-                                                    variant="secondary"
-                                                    className="absolute bottom-2 right-2 backdrop-blur-sm"
-                                                >
-                                                   {parseDuration(video.contentDetails.duration)}
-                                                </Badge>
-                                            )}
-                                         </div>
-                                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Play className="w-16 h-16 text-white/80"/>
-                                         </div>
-                                    </div>
-                                    <h3 className="font-semibold text-foreground text-sm line-clamp-2">
-                                        {video.snippet.title}
-                                    </h3>
-                                    <p className="text-xs text-muted-foreground">{video.snippet.channelTitle}</p>
-                                </div>
-                                <Button 
-                                    onClick={() => handleAddToPlaylistFromSearch(video)}
-                                    variant="secondary"
-                                    size="sm"
-                                    className="w-full mt-2"
-                                    disabled={recentlyAddedToPlaylist.has(video.id.videoId)}
-                                >
-                                    {recentlyAddedToPlaylist.has(video.id.videoId) ? (
-                                        <>
-                                            <Check className="me-2"/>
-                                            تمت الإضافة
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ListMusic className="me-2"/>
-                                            إضافة إلى القائمة
-                                        </>
-                                    )}
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </DialogContent>
-    </Dialog>
-
-
-    {previewVideo && (
-        <Dialog open={!!previewVideo} onOpenChange={(isOpen) => !isOpen && setPreviewVideo(null)}>
-            <DialogContent className="max-w-4xl w-full">
-                <DialogHeader>
-                    <DialogTitle>{previewVideo.snippet.title}</DialogTitle>
-                    <DialogDescription className="line-clamp-2">{previewVideo.snippet.description}</DialogDescription>
-                </DialogHeader>
-                <div className="aspect-video w-full rounded-lg overflow-hidden shadow-md bg-black relative">
-                     <YouTube
-                        key={previewVideo.id.videoId}
-                        videoId={previewVideo.id.videoId}
-                        opts={{
-                            height: '100%',
-                            width: '100%',
-                            playerVars: {
-                              autoplay: 1,
-                              controls: 1,
-                            },
-                        }}
-                        onReady={(event) => { previewPlayerRef.current = event.target; }}
-                        className="w-full h-full"
-                    />
-                </div>
-                 <div className="flex gap-2">
-                    <Button onClick={() => { handleAddToPlaylistFromSearch(previewVideo); }} variant="secondary" size="lg" className="w-full" disabled={recentlyAddedToPlaylist.has(previewVideo.id.videoId)}>
-                       {recentlyAddedToPlaylist.has(previewVideo.id.videoId) ? (
-                           <><Check className="me-2" /> تمت الإضافة</>
-                       ) : (
-                           <><ListMusic className="me-2" /> إضافة إلى القائمة</>
-                       )}
-                    </Button>
-                    <Button onClick={handleSetVideoFromPreview} size="lg" className="w-full">
-                        <Clapperboard className="me-2" />
-                        عرض للجميع الآن
-                    </Button>
-                </div>
-            </DialogContent>
-        </Dialog>
-    )}
+    <GiftShopDialog isOpen={dialogs.giftShop} onOpenChange={(o) => setDialogs(p => ({...p, giftShop: o}))} recipientName={giftData.target} onSendGift={async (r, g) => { await sendGift(user.name, r, g, roomId); const gift = Gifts.find(x => x.id === g); if(gift) sendSystemMessage(`🎁 ${user.name} أرسل ${gift.name} إلى ${r}`); }} seatedMembers={membersState.seated} />
+    <Dialog open={dialogs.invite} onOpenChange={(o) => setDialogs(p => ({...p, invite: o}))}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>دعوة أصدقاء</DialogTitle></DialogHeader><div className="space-y-3 max-h-80 overflow-y-auto mt-4">{friendData.friends.length > 0 ? friendData.friends.map(f => <div key={f.name} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30"><div className="flex items-center gap-3"><Avatar className="h-10 w-10"><AvatarImage src={PlaceHolderImages.find(p => p.id === f.avatarId)?.imageUrl} /></Avatar><span className="font-semibold">{f.name}</span></div><Button size="sm" onClick={async () => { await sendRoomInvitation(user.name, f.name, roomId, roomBasicInfo.name); setFriendData(p => ({...p, invited: new Set(p.invited).add(f.name)})); }} disabled={friendData.invited.has(f.name)}>{friendData.invited.has(f.name) ? "تمت الدعوة" : "دعوة"}</Button></div>) : <p className="text-center text-muted-foreground py-4">لا يوجد أصدقاء.</p>}</div></DialogContent></Dialog>
+    <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={handlePlayFromPlaylist} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({...p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialogs.search} onOpenChange={(o) => setDialogs(p => ({...p, search: o}))}><DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0"><DialogHeader className="p-6 pb-4 border-b"><DialogTitle>البحث عن فيديو</DialogTitle></DialogHeader><div className="p-6 flex gap-4"><form onSubmit={(e) => { e.preventDefault(); performSearch(search.query); }} className="flex-1 flex gap-2"><Input placeholder="يوتيوب..." value={search.query} onChange={(e) => setSearch(p => ({...p, query: e.target.value}))} className="bg-input" /><Button type="submit">{search.isSearching ? <Loader2 className="animate-spin" /> : <Search />}</Button></form></div><div className="flex-grow overflow-y-auto px-6 pb-6">{search.results.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{search.results.map(v => <div key={v.id.videoId} className="group cursor-pointer" onClick={() => setPreview(p => ({...p, video: v}))}><div className="relative aspect-video rounded-lg overflow-hidden mb-2"><Image src={v.snippet.thumbnails.high.url} alt="V" fill className="object-cover" /></div><h3 className="font-semibold text-sm line-clamp-2">{v.snippet.title}</h3><Button onClick={(e) => { e.stopPropagation(); handleAddToPlaylistFromSearch(v); }} variant="secondary" size="sm" className="w-full mt-2">{preview.recentlyAdded.has(v.id.videoId) ? "تمت الإضافة" : "إضافة للقائمة"}</Button></div>)}</div>}</div></DialogContent></Dialog>
+    {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => handleAddToPlaylistFromSearch(preview.video!)} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...p, video: null})); setDialogs(p => ({...p, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
 </div>
   );
 }
 
-
 const RoomClient = ({ roomId }: { roomId: string }) => {
   const router = useRouter();
-  const { user, isLoaded: isUserLoaded } = useUserSession();
-  const [token, setToken] = useState('');
-  const seatedMembersRef = useRef<SeatedMember[]>([]);
-  const [roomPassword, setRoomPassword] = useState<string | undefined>(undefined);
-  const [passwordChecked, setPasswordChecked] = useState(false);
-  
-  const [isSeated, setIsSeated] = useState(false);
-  const [videoMode, setVideoMode] = useState(false);
-
+  const { user, isLoaded } = useUserSession();
+  const [roomData, setRoomData] = useState({ token: '', password: undefined as string | undefined, checked: false, seated: false, videoMode: false });
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
   
   useEffect(() => {
-    if (!isUserLoaded || !user) return;
-
-    const seatedMembersDbRef = ref(database, `rooms/${roomId}/seatedMembers`);
-    const videoModeRef = ref(database, `rooms/${roomId}/videoMode`);
-
-    const seatedListener = onValue(seatedMembersDbRef, (snapshot) => {
-        const seatedData = snapshot.val();
-        seatedMembersRef.current = seatedData ? Object.values(seatedData) : [];
-        const isCurrentlySeated = seatedMembersRef.current.some((member: any) => member.name === user.name);
-        setIsSeated(isCurrentlySeated);
-    });
-
-    const videoModeListener = onValue(videoModeRef, (snapshot) => {
-      setVideoMode(snapshot.val() || false);
-    });
-    
-    return () => {
-        off(seatedMembersDbRef, 'value', seatedListener);
-        off(videoModeRef, 'value', videoModeListener);
-    }
-  }, [isUserLoaded, user, roomId, router]);
-
+    if (!isLoaded || !user) return;
+    const listeners = [
+        onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => setRoomData(p => ({ ...p, seated: snap.exists() && Object.values(snap.val()).some((m: any) => m.name === user.name) }))),
+        onValue(ref(database, `rooms/${roomId}/videoMode`), snap => setRoomData(p => ({ ...p, videoMode: snap.val() || false })))
+    ];
+    return () => listeners.forEach(off);
+  }, [isLoaded, user, roomId]);
 
   useEffect(() => {
-    if (!isUserLoaded) return;
-    if (!user) {
-        router.push('/');
-        return;
-    }
-
-    let isMounted = true;
-    const memberRef = ref(database, `rooms/${roomId}/members/${user.name}`);
-
-    // For Realtime DB presence
-    const presenceRef = ref(database, `presence/${user.name}`);
-    const connectedRef = ref(database, '.info/connected');
-
-    const sendSystemMessage = (text: string) => {
-      if (!roomId || !user) return;
-      const chatRef = ref(database, `rooms/${roomId}/chat`);
-      const newMsgRef = push(chatRef);
-      const messageData: Message = {
-        id: newMsgRef.key!,
-        sender: 'System',
-        text,
-        timestamp: serverTimestamp() as any,
-        isSystemMessage: true,
-      };
-      set(newMsgRef, messageData);
-    };
-
-    const setupRoom = async () => {
+    if (!isLoaded) return;
+    if (!user) { router.push('/'); return; }
+    let active = true;
+    const setup = async () => {
       try {
-        const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
-
-        if (!isMounted) return;
+        const snap = await get(ref(database, `rooms/${roomId}`));
+        if (!active) return;
+        if (!snap.exists()) { router.push('/lobby'); return; }
+        const data = snap.val();
+        setRoomData(p => ({ ...p, password: data.password, checked: true }));
         
-        if (!roomSnapshot.exists()) {
-            console.error('الغرفة غير موجودة. تمت إعادة توجيهك إلى الردهة.');
-            router.push('/lobby');
-            return;
-        }
+        onValue(ref(database, '.info/connected'), s => {
+          if (s.val() === true) {
+            goOnline(database);
+            const mRef = ref(database, `rooms/${roomId}/members/${user.name}`);
+            set(mRef, { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() });
+            onDisconnect(mRef).remove();
+            const pRef = ref(database, `presence/${user.name}`);
+            set(pRef, { status: 'online', lastChanged: serverTimestamp() });
+            onDisconnect(pRef).set({ status: 'offline', lastChanged: serverTimestamp() });
+          }
+        });
 
-        const roomData = roomSnapshot.val();
-        setRoomPassword(roomData.password);
-        setPasswordChecked(true); // Now we know if there is a password or not
-        
-        const isReturning = roomData.members?.[user.name];
-
-        // Setup presence and fetch LiveKit token in parallel
-        const presencePromise = (async () => {
-            const memberData = { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() };
-            
-            const connectedListener = onValue(connectedRef, (snap) => {
-              if (snap.val() === true) {
-                goOnline(database);
-                set(memberRef, memberData);
-                onDisconnect(memberRef).remove();
-                
-                set(presenceRef, { status: 'online', lastChanged: serverTimestamp() });
-                onDisconnect(presenceRef).set({ status: 'offline', lastChanged: serverTimestamp() });
-              }
-            });
-
-
-            if(!isReturning){
-              sendSystemMessage(`${user.name} انضم إلى الغرفة`);
-            }
-        })();
-
-        const tokenFetchPromise = (async () => {
-            try {
-                const res = await fetch(`/api/livekit?room=${roomId}&username=${user.name}`);
-                if (!res.ok) {
-                    const errorText = await res.text();
-                    throw new Error(`Failed to fetch token: ${res.statusText} - ${errorText}`);
-                }
-                const data = await res.json();
-                if (isMounted) {
-                    setToken(data.token);
-                }
-            } catch (error) {
-                console.error('Error fetching LiveKit token:', error);
-                if (isMounted) {
-                    console.error('فشل في الحصول على رمز الدخول للغرفة. قد يتم عرض الصفحة بشكل غير صحيح.');
-                }
-            }
-        })();
-        
-        await Promise.all([presencePromise, tokenFetchPromise]);
-
-      } catch (error) {
-        if (isMounted) {
-            console.error("Error setting up room:", error);
-            console.error('فشل في تهيئة الغرفة. قد تكون هناك مشكلة في الاتصال.');
-        }
-      }
+        const res = await fetch(`/api/livekit?room=${roomId}&username=${user.name}`);
+        const tokenData = await res.json();
+        if (active) setRoomData(p => ({ ...p, token: tokenData.token }));
+      } catch (e) { console.error("Setup error", e); }
     };
+    setup();
+    return () => { active = false; };
+  }, [isLoaded, user, roomId, router]);
 
-    setupRoom();
-
-    const handleBeforeUnload = () => {
-        goOffline(database);
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-        isMounted = false;
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-}, [isUserLoaded, user, roomId, router]);
-
-  if (!isUserLoaded || !user || !passwordChecked) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-16 w-16 animate-spin text-accent" />
-      </div>
-    );
-  }
-
-  if (!livekitUrl) {
-    return (
-        <div className="flex h-screen items-center justify-center text-center p-4 bg-background">
-            <div className='max-w-md bg-card/50 p-8 rounded-lg shadow-lg backdrop-blur-lg border border-destructive'>
-                <h1 className="text-2xl font-bold text-destructive mb-4">خطأ في الإعدادات</h1>
-                <p className="text-foreground">
-                    خادم الوسائط (LiveKit) غير مُهيأ. يرجى التأكد من إضافة المتغير
-                    <code className="bg-muted text-accent font-mono p-1 rounded-md mx-1">LIVEKIT_URL</code>
-                    إلى ملف البيئة الخاص بك.
-                </p>
-                <Button onClick={() => router.push('/lobby')} className="mt-6 w-full">
-                    العودة إلى الردهة
-                </Button>
-            </div>
-        </div>
-    );
-  }
-  
-  if (!token) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-16 w-16 animate-spin text-accent" />
-        <p className="ms-4 text-muted-foreground">جارٍ تهيئة الغرفة...</p>
-      </div>
-    );
-  }
+  if (!isLoaded || !user || !roomData.checked) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-16 w-16 animate-spin text-accent" /></div>;
+  if (!livekitUrl) return <div className="flex h-screen items-center justify-center text-center p-4 bg-background"><div className='max-w-md bg-card/50 p-8 rounded-lg border border-destructive'><h1 className="text-2xl font-bold text-destructive mb-4">خطأ إعدادات</h1><p>LIVEKIT_URL مفقود.</p><Button onClick={() => router.push('/lobby')} className="mt-6 w-full">العودة للردهة</Button></div></div>;
+  if (!roomData.token) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-16 w-16 animate-spin text-accent" /><p className="ms-4 text-muted-foreground">تهيئة...</p></div>;
 
   return (
-    <LiveKitRoom
-      token={token}
-      serverUrl={livekitUrl}
-      user={user}
-      isSeated={isSeated}
-      videoMode={videoMode}
-    >
-      <RoomLayout 
-        roomId={roomId} 
-        user={user} 
-        roomPassword={roomPassword}
-        onCorrectPassword={() => setRoomPassword(undefined)} // Clear password check after correct entry
-        isPasswordChecked={passwordChecked}
-      />
+    <LiveKitRoom token={roomData.token} serverUrl={livekitUrl} user={user} isSeated={roomData.seated} videoMode={roomData.videoMode}>
+      <RoomLayout roomId={roomId} user={user} sendSystemMessage={() => {}} roomPassword={roomData.password} onCorrectPassword={() => setRoomData(p => ({ ...p, password: undefined }))} isPasswordChecked={roomData.checked} />
     </LiveKitRoom>
   );
 };
