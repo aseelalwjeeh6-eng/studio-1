@@ -14,9 +14,9 @@ import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 7: FINAL STABILITY)
+ * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 8: PEAK STABILITY)
  * ---------------------------------------------------------------------
- * Hardened synchronization with subtle drift correction and media session API.
+ * Robust synchronization with feedback loop prevention and local-only quality.
  */
 
 interface PlayerProps {
@@ -86,6 +86,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const htmlPlayerRef = useRef<HTMLVideoElement | null>(null);
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
+  const isInternalUpdate = useRef(false); // Prevents feedback loops from sync commands
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
@@ -93,6 +94,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Quality and Volume are local-only preferences
   const [volume, setVolume] = useState(() => getCachedState('global', 'volume', 0.8));
   const [quality, setQuality] = useState(() => getCachedState('global', 'quality', 'auto'));
   
@@ -121,7 +123,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [playerState?.isPlaying]);
 
   /**
-   * SYNCHRONIZATION LOOP (PHASE 7)
+   * SYNCHRONIZATION LOOP (REFINED)
    */
   const syncPlayerState = useCallback(() => {
     if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
@@ -153,8 +155,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     const absDifference = Math.abs(timeDifference);
   
     try {
-      // 3. Correction Strategies
+      // Internal Update Guard: Set flag before programmatic changes
+      isInternalUpdate.current = true;
+
+      // 1. Correction Strategies
       if (absDifference > 2.5) { 
+        // Hard Sync
         if (urlType === 'youtube') {
             localPlayer.seekTo(serverTime, true);
             localPlayer.setPlaybackRate(1);
@@ -164,6 +170,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
       } 
       else if (absDifference > 0.4) { 
+        // Soft Sync (Adjust playback rate)
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (urlType === 'youtube') {
             if (localPlayer.getPlaybackRate() !== playbackRate) localPlayer.setPlaybackRate(playbackRate);
@@ -172,14 +179,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
       } 
       else { 
+         // Close enough, reset rate
          if (urlType === 'youtube') {
             if (localPlayer.getPlaybackRate() !== 1) localPlayer.setPlaybackRate(1);
         } else {
-            if (localPlayer.playbackRate !== 1) localPlayer.playbackRate = playbackRate;
+            if (localPlayer.playbackRate !== 1) localPlayer.playbackRate = 1;
         }
       }
   
-      // 4. Play/Pause State Sync
+      // 2. Play/Pause State Sync
       if (urlType === 'youtube') {
         const ytState = localPlayer.getPlayerState();
         if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
@@ -194,7 +202,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           localPlayer.pause();
         }
       }
-    } catch (e) {}
+
+      // Reset internal update flag after a short delay
+      setTimeout(() => { isInternalUpdate.current = false; }, 500);
+
+    } catch (e) {
+        isInternalUpdate.current = false;
+    }
   
   }, [playerState, duration, urlType]);
 
@@ -366,7 +380,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [volume]);
 
   const onYtStateChange = useCallback((event: { data: number }) => {
-    if (!canControl || isSeekingRef.current) return;
+    // GUARD: If this update was triggered by our own sync logic, ignore it
+    if (!canControl || isSeekingRef.current || isInternalUpdate.current) return;
+    
     const currentTime = ytPlayerRef.current?.getCurrentTime();
     if (currentTime === undefined) return;
 
@@ -392,7 +408,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [volume]);
   
   const onHtmlStateChange = useCallback(() => {
-      if (!canControl || isSeekingRef.current || !htmlPlayerRef.current) return;
+      // GUARD: If this update was triggered by our own sync logic, ignore it
+      if (!canControl || isSeekingRef.current || !htmlPlayerRef.current || isInternalUpdate.current) return;
+      
       const isPlaying = !htmlPlayerRef.current.paused;
       if (playerState?.isPlaying !== isPlaying) onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
   }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
