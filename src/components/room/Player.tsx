@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -22,6 +23,7 @@ interface PlayerProps {
   onPlayerStateChange: (newState: Partial<PlayerState>) => void;
   onVideoEnded: () => void;
   videoDetails: YouTubeVideo | null;
+  serverTimeOffset: number;
 }
 
 type UrlType = 'youtube' | 'direct' | 'iframe' | 'empty';
@@ -71,7 +73,7 @@ function getYouTubeVideoId(url: string): string | null {
   return null;
 }
 
-const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, onPlayerStateChange, onVideoEnded, videoDetails }: PlayerProps) => {
+const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, onPlayerStateChange, onVideoEnded, videoDetails, serverTimeOffset }: PlayerProps) => {
   const urlType = useMemo(() => getUrlType(videoUrl), [videoUrl]);
   const videoId = useMemo(() => (urlType === 'youtube' ? getYouTubeVideoId(videoUrl) : null), [videoUrl, urlType]);
 
@@ -97,6 +99,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
+
+  // Helper to get synced time
+  const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
   useEffect(() => {
     isPlayerReady.current = false;
@@ -155,13 +160,15 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         } catch(e) {}
     }
 
-    const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (Date.now() - (playerState.timestamp || Date.now())) / 1000 : 0);
+    // Precise server time calculation
+    const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
     const timeDifference = serverTime - currentPlayerTime;
     const absDifference = Math.abs(timeDifference);
   
     try {
       isInternalUpdate.current = true;
 
+      // Hard Sync (Jumps)
       if (absDifference > 2.5) { 
         if (urlType === 'youtube' && typeof localPlayer.seekTo === 'function') {
             localPlayer.seekTo(serverTime, true);
@@ -171,6 +178,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             localPlayer.playbackRate = 1;
         }
       } 
+      // Soft Sync (Speed adjust)
       else if (absDifference > 0.4) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (urlType === 'youtube' && typeof localPlayer.setPlaybackRate === 'function') {
@@ -202,7 +210,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       setTimeout(() => { isInternalUpdate.current = false; }, 500);
     } catch (e) { isInternalUpdate.current = false; }
   
-  }, [playerState, duration, urlType]);
+  }, [playerState, duration, urlType, getServerTimeNow]);
 
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
@@ -315,13 +323,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
         if (!playerState || !duration || duration === 0 || isSeekingRef.current) return;
-        const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (Date.now() - (playerState.timestamp || Date.now())) / 1000 : 0);
+        const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
         setProgress(Math.max(0, Math.min(serverTime, duration)));
     };
     updateProgress();
     if (playerState?.isPlaying) progressInterval = setInterval(updateProgress, 500);
     return () => { if (progressInterval) clearInterval(progressInterval); };
-  }, [playerState, duration]);
+  }, [playerState, duration, getServerTimeNow]);
 
   const seek = useCallback((amount: number) => {
     if (!canControl || !isPlayerReady.current || !duration) return;
@@ -508,7 +516,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 width: '100%',
                 playerVars: {
                     autoplay: playerState?.isPlaying ? 1 : 0,
-                    start: Math.floor(Math.max(0, (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - (playerState?.timestamp || Date.now())) / 1000 : 0))),
+                    start: Math.floor(Math.max(0, (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (getServerTimeNow() - (playerState?.timestamp || getServerTimeNow())) / 1000 : 0))),
                     controls: 0,
                     rel: 0,
                     showinfo: 0,
@@ -529,7 +537,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         {urlType === 'direct' && (
             <video
                 ref={htmlPlayerRef}
-                src={`${videoUrl}#t=${Math.max(0, (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - (playerState?.timestamp || Date.now())) / 1000 : 0))}`}
+                src={`${videoUrl}#t=${Math.max(0, (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (getServerTimeNow() - (playerState?.timestamp || getServerTimeNow())) / 1000 : 0))}`}
                 className="w-full h-full object-contain"
                 onLoadedData={onHtmlReady}
                 onPlay={onHtmlStateChange}

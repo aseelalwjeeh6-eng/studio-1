@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
@@ -173,6 +174,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
   
+  // High-precision clock sync
+  const [serverTimeOffset, setServerTimeOffset] = useState(0);
+
   const [roomBasicInfo, setRoomBasicInfo] = useState(() => getCachedState(roomId, 'roomBasicInfo', { 
     name: '', 
     hostName: '', 
@@ -248,6 +252,15 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
   useEffect(() => { if (isPasswordChecked) setAuth(prev => ({ ...prev, isFullyAuthed: !roomPassword })); }, [isPasswordChecked, roomPassword]);
 
+  // Sync clock with Firebase
+  useEffect(() => {
+    const offsetRef = ref(database, '.info/serverTimeOffset');
+    const unsub = onValue(offsetRef, (snap) => {
+      setServerTimeOffset(snap.val() || 0);
+    });
+    return () => unsub();
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     const fetchFriends = async () => {
@@ -283,15 +296,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         const userSeat = membersState.seated.find(m => m.name === user.name);
         if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
         const membersSnapshot = await get(membersRef);
-        if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) await remove(roomRef);
-        else await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
+        if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) {
+            // Only delete if NOBODY is left in the room
+            await remove(roomRef);
+        } else {
+            await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
+        }
     } catch (e) {}
     router.push('/lobby');
   }, [user, roomId, membersState.seated, router]);
   
   useEffect(() => {
     let isMounted = true;
-    const unsubs: Unsubscribe[] = [];
+    const unsubs: (() => void)[] = [];
     
     const setupListeners = async () => {
         const roomRef = ref(database, `rooms/${roomId}`);
@@ -445,6 +462,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     return () => { isMounted = false; unsubs.forEach(unsub => unsub()); };
   }, [roomId, router]);
 
+  // Heartbeat - Only advances server time, independent of who joins/leaves
   useEffect(() => {
     let heartbeatInterval: NodeJS.Timeout | null = null;
     if (isSyncDriver && playerState?.isPlaying) {
@@ -516,6 +534,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       }
   }, [canControl]);
 
+  // Video session updates - Triggered ONLY by UI actions
   const onSetVideo = useCallback((videoIdentifier: string, startTime = 0, videoDetails?: YouTubeVideo) => {
     if (canControl) {
       const updates: any = {};
@@ -599,7 +618,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             <main className="w-full max-w-7xl mx-auto flex h-full flex-col gap-2 md:gap-4 px-2 md:px-4 flex-1 min-h-0">
                   {videoState.mode ? <div className="flex-grow rounded-lg overflow-hidden h-full"><VideoConference /></div> : (
                       <>
-                          <div className="flex-shrink-0"><Player videoUrl={videoState.url} onSetVideo={onSetVideo} canControl={canControl} onSearchClick={() => setDialogs(p => ({...p, search: true}))} playerState={playerState} onPlayerStateChange={handlePlayerStateChange} onVideoEnded={handleVideoEnded} videoDetails={videoState.details} /></div>
+                          <div className="flex-shrink-0">
+                            <Player 
+                                videoUrl={videoState.url} 
+                                onSetVideo={onSetVideo} 
+                                canControl={canControl} 
+                                onSearchClick={() => setDialogs(p => ({...p, search: true}))} 
+                                playerState={playerState} 
+                                onPlayerStateChange={handlePlayerStateChange} 
+                                onVideoEnded={handleVideoEnded} 
+                                videoDetails={videoState.details}
+                                serverTimeOffset={serverTimeOffset}
+                            />
+                          </div>
                           <div className="flex-shrink-0"><Seats seatedMembers={membersState.seated} hostName={roomBasicInfo.hostName} moderators={roomBasicInfo.moderators} onTakeSeat={handleTakeSeat} onLeaveSeat={handleLeaveSeat} currentUser={user} isHost={isHost} onKickUser={() => {}} onPromote={() => {}} onDemote={() => {}} onTransferHost={() => {}} room={livekitRoom as any} currentUserFriends={friendData.friends} currentUserRequests={friendData.requests} onSendGift={(t) => { setGiftData(p => ({...p, target: t})); setDialogs(p => ({...p, giftShop: true})); }} /></div>
                           <div className="flex-shrink-0 mt-2 md:mt-4"><ViewerInfo members={viewers} /></div>
                           <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0 mt-2 md:mt-4"><ChatHeader isHost={isHost} roomId={roomId} /><div className="flex-grow min-h-0 pb-20"><ChatMessages roomId={roomId} user={user} onReply={(m) => setChatState(p => ({...p, replyingTo: m}))} /></div></div>
@@ -635,7 +666,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     let isMounted = true;
     if (!isLoaded || !user) return;
     
-    const unsubs: Unsubscribe[] = [
+    const unsubs: (() => void)[] = [
         onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => {
             const val = snap.exists() ? Object.values(snap.val()) : [];
             const isSeated = val.some((m: any) => m.name === user.name);
@@ -660,7 +691,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     if (!isLoaded) return;
     if (!user) { router.push('/'); return; }
     let active = true;
-    let connectedUnsub: Unsubscribe | null = null;
+    let connectedUnsub: (() => void) | null = null;
     
     const setup = async () => {
       try {
