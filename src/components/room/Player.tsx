@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Button } from '@/components/ui/button';
-import { Play, Search, Film, Pause, Volume2, Volume1, VolumeX, Settings, YoutubeIcon } from 'lucide-react';
+import { Play, Search, Film, Pause, Volume2, Volume1, VolumeX, Settings, YoutubeIcon, FastForward, Rewind } from 'lucide-react';
 import { PlayerState } from './RoomClient';
 import { Slider } from '../ui/slider';
 import { cn } from '@/lib/utils';
@@ -12,13 +12,6 @@ import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Label } from '../ui/label';
 import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
-
-/**
- * TECHNICAL ANALYSIS - PLAYER STABILITY SYSTEM
- * -------------------------------------------
- * Fixes internal YouTube API crashes (this.g is null) by implementing 
- * rigorous existence checks and proper lifecycle cleanup.
- */
 
 interface PlayerProps {
   videoUrl: string;
@@ -55,7 +48,6 @@ function getUrlType(url: string): UrlType {
     return 'iframe';
 }
 
-
 function getYouTubeVideoId(url: string): string | null {
   if (!url) return null;
   try {
@@ -85,15 +77,20 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   const ytPlayerRef = useRef<YouTubePlayer | null>(null);
   const htmlPlayerRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
   const isInternalUpdate = useRef(false); 
+  const isBufferingRef = useRef(false); // New: Track buffering to avoid sync fights
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: string; visible: boolean }>({ type: '', visible: false });
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const [volume, setVolume] = useState(() => getCachedState('global', 'volume', 0.8));
   const [quality, setQuality] = useState(() => getCachedState('global', 'quality', 'auto'));
@@ -108,32 +105,33 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [videoId, quality]);
 
   /**
-   * Wake Lock - Prevent screen timeout during playback
+   * Visual Feedback Helper
+   */
+  const triggerFeedback = useCallback((type: string) => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    setFeedback({ type, visible: true });
+    feedbackTimeoutRef.current = setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
+  }, []);
+
+  /**
+   * Wake Lock - Prevent screen timeout
    */
   useEffect(() => {
     let wakeLock: any = null;
     const requestWakeLock = async () => {
       if (typeof window !== 'undefined' && 'wakeLock' in navigator && playerState?.isPlaying) {
-        try {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
-        } catch (err) {
-          // Silently fail if not supported or denied
-        }
+        try { wakeLock = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
       }
     };
-
     requestWakeLock();
-    return () => {
-      if (wakeLock) wakeLock.release().then(() => wakeLock = null).catch(() => {});
-    };
+    return () => { if (wakeLock) wakeLock.release().catch(() => {}); };
   }, [playerState?.isPlaying]);
 
   /**
-   * SYNCHRONIZATION LOOP (REFINED & DEFENSIVE)
+   * SYNCHRONIZATION LOOP (REFINED)
    */
   const syncPlayerState = useCallback(() => {
-    // Visibility check & Environment check
-    if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current) {
+    if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current || isBufferingRef.current) {
       return;
     }
   
@@ -143,13 +141,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
       if (ytPlayerRef.current && urlType === 'youtube') {
         localPlayer = ytPlayerRef.current;
-        // CRITICAL DEFENSE: Check if the actual API functions exist before calling
-        if (typeof localPlayer.getPlayerState !== 'function' || typeof localPlayer.getCurrentTime !== 'function') {
-            return;
-        }
+        if (typeof localPlayer.getPlayerState !== 'function' || typeof localPlayer.getCurrentTime !== 'function') return;
         
         const ytState = localPlayer.getPlayerState();
-        if (ytState === 3 || ytState === -1) return; // Buffering or unstarted
+        if (ytState === 3 || ytState === -1) {
+            isBufferingRef.current = (ytState === 3);
+            return; 
+        }
         currentPlayerTime = localPlayer.getCurrentTime();
       } else if (htmlPlayerRef.current && urlType === 'direct') {
         localPlayer = htmlPlayerRef.current;
@@ -158,17 +156,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       } else {
         return;
       }
-    } catch (e) {
-      return;
-    }
+    } catch (e) { return; }
   
     if (!duration || duration === 0) {
         try {
-            if (urlType === 'youtube' && typeof localPlayer.getDuration === 'function') {
-                setDuration(localPlayer.getDuration());
-            } else if (urlType === 'direct') {
-                setDuration(localPlayer.duration);
-            }
+            if (urlType === 'youtube' && typeof localPlayer.getDuration === 'function') setDuration(localPlayer.getDuration());
+            else if (urlType === 'direct') setDuration(localPlayer.duration);
         } catch(e) {}
     }
 
@@ -179,7 +172,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
       isInternalUpdate.current = true;
 
-      // 1. Correction Strategies
       if (absDifference > 2.5) { 
         if (urlType === 'youtube' && typeof localPlayer.seekTo === 'function') {
             localPlayer.seekTo(serverTime, true);
@@ -205,7 +197,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
       }
   
-      // 2. Play/Pause State Sync
       if (urlType === 'youtube') {
         const ytState = localPlayer.getPlayerState();
         if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
@@ -214,45 +205,95 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           if (typeof localPlayer.pauseVideo === 'function') localPlayer.pauseVideo();
         }
       } else {
-        if (playerState.isPlaying && localPlayer.paused) {
-          localPlayer.play().catch(() => {});
-        } else if (!playerState.isPlaying && !localPlayer.paused) {
-          localPlayer.pause();
-        }
+        if (playerState.isPlaying && localPlayer.paused) localPlayer.play().catch(() => {});
+        else if (!playerState.isPlaying && !localPlayer.paused) localPlayer.pause();
       }
 
       setTimeout(() => { isInternalUpdate.current = false; }, 500);
-
-    } catch (e) {
-        isInternalUpdate.current = false;
-    }
+    } catch (e) { isInternalUpdate.current = false; }
   
   }, [playerState, duration, urlType]);
 
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     syncIntervalRef.current = setInterval(syncPlayerState, 1000);
-    return () => {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-    };
+    return () => { if (syncIntervalRef.current) clearInterval(syncIntervalRef.current); };
   }, [syncPlayerState]);
-
 
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
-  
     try {
       if (urlType === 'youtube' && ytPlayerRef.current) {
         if (typeof ytPlayerRef.current.getPlayerState !== 'function') return;
         const state = ytPlayerRef.current.getPlayerState();
-        if (state === 1) ytPlayerRef.current.pauseVideo();
-        else ytPlayerRef.current.playVideo();
+        if (state === 1) {
+            ytPlayerRef.current.pauseVideo();
+            triggerFeedback('pause');
+        } else {
+            ytPlayerRef.current.playVideo();
+            triggerFeedback('play');
+        }
       } else if (urlType === 'direct' && htmlPlayerRef.current) {
-        if (htmlPlayerRef.current.paused) htmlPlayerRef.current.play().catch(() => {});
-        else htmlPlayerRef.current.pause();
+        if (htmlPlayerRef.current.paused) {
+            htmlPlayerRef.current.play().catch(() => {});
+            triggerFeedback('play');
+        } else {
+            htmlPlayerRef.current.pause();
+            triggerFeedback('pause');
+        }
       }
     } catch (e) {}
-  }, [canControl, urlType]);
+  }, [canControl, urlType, triggerFeedback]);
+
+  /**
+   * KEYBOARD SHORTCUTS
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+        if (!canControl || !isPlayerReady.current) return;
+
+        switch (e.key.toLowerCase()) {
+            case ' ':
+            case 'k':
+                e.preventDefault();
+                togglePlay();
+                break;
+            case 'arrowright':
+            case 'l':
+                e.preventDefault();
+                seek(10);
+                break;
+            case 'arrowleft':
+            case 'j':
+                e.preventDefault();
+                seek(-10);
+                break;
+            case 'arrowup':
+                e.preventDefault();
+                handleVolumeChange([Math.min(1, volume + 0.1)]);
+                break;
+            case 'arrowdown':
+                e.preventDefault();
+                handleVolumeChange([Math.max(0, volume - 0.1)]);
+                break;
+            case 'f':
+                e.preventDefault();
+                if (containerRef.current?.requestFullscreen) {
+                    if (document.fullscreenElement) document.exitFullscreen();
+                    else containerRef.current.requestFullscreen();
+                }
+                break;
+            case 'm':
+                e.preventDefault();
+                handleVolumeChange([volume === 0 ? 0.8 : 0]);
+                break;
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canControl, volume, togglePlay]);
 
   // Media Session integration
   useEffect(() => {
@@ -261,21 +302,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         navigator.mediaSession.metadata = null;
         return;
       }
-      
       try {
           const artwork = [];
           if (videoDetails.snippet.thumbnails.high) artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
-          if (videoDetails.snippet.thumbnails.medium) artwork.push({ src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' });
-
           navigator.mediaSession.metadata = new MediaMetadata({
             title: videoDetails.snippet.title,
             artist: videoDetails.snippet.channelTitle,
             album: 'اصيل سينما',
             artwork: artwork
           });
-          
           navigator.mediaSession.setActionHandler('play', canControl ? togglePlay : null);
           navigator.mediaSession.setActionHandler('pause', canControl ? togglePlay : null);
+          navigator.mediaSession.setActionHandler('seekbackward', canControl ? () => seek(-10) : null);
+          navigator.mediaSession.setActionHandler('seekforward', canControl ? () => seek(10) : null);
       } catch (e) {}
     }
   }, [videoDetails, canControl, togglePlay, urlType]);
@@ -286,7 +325,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     }
   }, [playerState?.isPlaying]);
 
-
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
@@ -294,14 +332,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (Date.now() - (playerState.timestamp || Date.now())) / 1000 : 0);
         setProgress(Math.max(0, Math.min(serverTime, duration)));
     };
-    
     updateProgress();
-    if (playerState?.isPlaying) {
-      progressInterval = setInterval(updateProgress, 500);
-    }
-    return () => {
-      if (progressInterval) clearInterval(progressInterval);
-    };
+    if (playerState?.isPlaying) progressInterval = setInterval(updateProgress, 500);
+    return () => { if (progressInterval) clearInterval(progressInterval); };
   }, [playerState, duration]);
 
   const seek = useCallback((amount: number) => {
@@ -309,29 +342,21 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     
     let currentTime = 0;
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
-            currentTime = ytPlayerRef.current.getCurrentTime();
-        } else if (htmlPlayerRef.current) {
-            currentTime = htmlPlayerRef.current.currentTime;
-        }
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') currentTime = ytPlayerRef.current.getCurrentTime();
+        else if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
     } catch(e) {}
 
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     isSeekingRef.current = true;
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
-            ytPlayerRef.current.seekTo(newTime, true);
-        } else if (htmlPlayerRef.current) {
-            htmlPlayerRef.current.currentTime = newTime;
-        }
-    } catch (e) {
-        isSeekingRef.current = false;
-        return;
-    }
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true);
+        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+        triggerFeedback(amount > 0 ? 'forward' : 'backward');
+    } catch (e) { isSeekingRef.current = false; return; }
     setProgress(newTime);
     onPlayerStateChange({ seekTime: newTime });
     setTimeout(() => { isSeekingRef.current = false; }, 500);
-  }, [canControl, duration, onPlayerStateChange]);
+  }, [canControl, duration, onPlayerStateChange, triggerFeedback]);
 
   const handleSliderChange = useCallback((value: number[]) => {
     if (!canControl || !isPlayerReady.current) return;
@@ -339,11 +364,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setProgress(newTime);
     isSeekingRef.current = true;
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
-            ytPlayerRef.current.seekTo(newTime, false);
-        } else if (htmlPlayerRef.current) {
-            htmlPlayerRef.current.currentTime = newTime;
-        }
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, false);
+        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     } catch (e) {}
   }, [canControl]);
   
@@ -351,11 +373,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
       try { 
-          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
-              ytPlayerRef.current.seekTo(newTime, true); 
-          } else if (htmlPlayerRef.current) {
-              htmlPlayerRef.current.currentTime = newTime;
-          }
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true); 
+          else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
       } catch(e) {}
       onPlayerStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
@@ -366,11 +385,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(vol);
     setCachedState('global', 'volume', vol);
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-            ytPlayerRef.current.setVolume(vol * 100);
-        } else if (htmlPlayerRef.current) {
-            htmlPlayerRef.current.volume = vol;
-        }
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') ytPlayerRef.current.setVolume(vol * 100);
+        else if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
     } catch (e) {}
   }, []);
   
@@ -408,12 +424,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onYtReady = useCallback((event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
-    if (typeof event.target.getDuration === 'function') {
-        setDuration(event.target.getDuration());
-    }
-    if (typeof event.target.setVolume === 'function') {
-        event.target.setVolume(volume * 100);
-    }
+    if (typeof event.target.getDuration === 'function') setDuration(event.target.getDuration());
+    if (typeof event.target.setVolume === 'function') event.target.setVolume(volume * 100);
   }, [volume]);
 
   const onYtStateChange = useCallback((event: { data: number }) => {
@@ -422,19 +434,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
         if (typeof ytPlayerRef.current.getCurrentTime !== 'function') return;
         const currentTime = ytPlayerRef.current.getCurrentTime();
+        isBufferingRef.current = (event.data === 3);
 
-        if (event.data === 1) { // Playing
+        if (event.data === 1) { 
           if (!playerState?.isPlaying) onPlayerStateChange({ isPlaying: true, seekTime: currentTime });
-        } else if (event.data === 2) { // Paused
+        } else if (event.data === 2) { 
            if (playerState?.isPlaying) onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
         }
     } catch(e) {}
   }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
 
-  const onYtError = useCallback((event: { data: number }) => {
-    if (canControl) onVideoEnded();
-  }, [canControl, onVideoEnded]);
-
+  const onYtError = useCallback(() => { if (canControl) onVideoEnded(); }, [canControl, onVideoEnded]);
   const onYtEnd = useCallback(() => { if (canControl) onVideoEnded(); }, [canControl, onVideoEnded]);
 
   const onHtmlReady = useCallback((e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
@@ -446,7 +456,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const onHtmlStateChange = useCallback(() => {
       if (!canControl || isSeekingRef.current || !htmlPlayerRef.current || isInternalUpdate.current) return;
-      
       const isPlaying = !htmlPlayerRef.current.paused;
       if (playerState?.isPlaying !== isPlaying) onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
   }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
@@ -461,91 +470,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return date.toISOString().substr(hasHours ? 11 : 14, hasHours ? 8 : 5);
   }, []);
 
-  useEffect(() => {
-      return () => {
-          if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-      }
-  }, []);
-
   const VolumeIcon = useMemo(() => {
     if (volume === 0) return VolumeX;
     if (volume < 0.5) return Volume1;
     return Volume2;
   }, [volume]);
-
-
-  const renderCustomControls = () => {
-    if (urlType === 'empty' || urlType === 'iframe') return null;
-
-    return (
-      <div 
-        className={cn(
-            "absolute inset-0 z-20 flex flex-col justify-between p-1 md:p-2 bg-black/30 transition-opacity duration-300",
-            showControls ? "opacity-100" : "opacity-0"
-        )}
-        onClick={(e) => e.stopPropagation()} 
-      >
-        <div></div>
-        <div className="flex items-center justify-center">
-           {canControl && (
-            <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-16 md:h-16">
-                {playerState?.isPlaying ? <Pause className="w-8 h-8 md:w-10 md:h-10" /> : <Play className="w-8 h-8 md:w-10 md:h-10" />}
-            </Button>
-           )}
-        </div>
-        <div className="flex items-center gap-1 md:gap-2 text-white font-mono text-xs md:text-sm">
-           {canControl ? (
-            <>
-               <span className="w-12 text-center">{formatTime(progress)}</span>
-               <Slider value={[progress]} max={duration || 100} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} />
-               <span className="w-12 text-center">{formatTime(duration)}</span>
-            </>
-           ) : (
-             <>
-               <span className="w-12 text-center">{formatTime(progress)}</span>
-               <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden">
-                 <div className="absolute h-full bg-primary" style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%`}}></div>
-               </div>
-               <span className="w-12 text-center">{formatTime(duration)}</span>
-            </>
-           )}
-            <Popover>
-                <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
-                        <VolumeIcon className="w-4 h-4 md:w-5 md:h-5" />
-                    </Button>
-                </PopoverTrigger>
-                <PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none">
-                     <Slider defaultValue={[volume]} max={1} step={0.05} orientation="vertical" className="h-24 w-2" onValueChange={handleVolumeChange} />
-                </PopoverContent>
-            </Popover>
-            {urlType === 'youtube' && canControl && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
-                    <Settings className="w-4 h-4 md:w-5 md:h-5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none">
-                  <RadioGroup value={quality} onValueChange={handleQualityChange} className="text-white text-sm">
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="auto" id="qauto" />
-                      <Label htmlFor="qauto">Auto</Label>
-                    </div>
-                    {['hd1080', 'hd720', 'large', 'medium'].map(q => (
-                      <div key={q} className="flex items-center space-x-2">
-                        <RadioGroupItem value={q} id={`q${q}`} />
-                        <Label htmlFor={`q${q}`}>{q.replace('hd', '').replace('large', '480p').replace('medium', '360p')}</Label>
-                      </div>
-                    ))}
-                  </RadioGroup>
-                </PopoverContent>
-              </Popover>
-            )}
-        </div>
-      </div>
-    );
-  };
 
   const onMouseMove = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -558,9 +487,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setShowControls(false);
   }, []);
 
+  const renderFeedback = () => {
+    if (!feedback.visible) return null;
+    return (
+        <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+            <div className="bg-black/40 p-6 rounded-full animate-in fade-in zoom-in duration-300">
+                {feedback.type === 'play' && <Play className="w-12 h-12 text-white fill-white" />}
+                {feedback.type === 'pause' && <Pause className="w-12 h-12 text-white fill-white" />}
+                {feedback.type === 'forward' && <div className="flex flex-col items-center"><FastForward className="w-12 h-12 text-white" /><span className="text-white text-xs font-bold mt-1">+10s</span></div>}
+                {feedback.type === 'backward' && <div className="flex flex-col items-center"><Rewind className="w-12 h-12 text-white" /><span className="text-white text-xs font-bold mt-1">-10s</span></div>}
+            </div>
+        </div>
+    );
+  };
+
   return (
     <div 
-        className="w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative aspect-video"
+        ref={containerRef}
+        className={cn(
+            "w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative aspect-video group",
+            !showControls && "cursor-none" // Hide cursor when controls are hidden
+        )}
         onMouseMove={onMouseMove}
         onClick={handlePlayerClick}
         onMouseLeave={onMouseLeave}
@@ -613,7 +560,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 className="w-full h-full border-0"
                 allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                 allowFullScreen
-                sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-presentation"
             ></iframe>
         )}
         {urlType === 'empty' && (
@@ -637,7 +583,79 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             </div>
         )}
       </div>
-      {renderCustomControls()}
+
+      {/* Visual Feedback Overlays */}
+      {renderFeedback()}
+
+      {/* Custom Controls Overlay */}
+      {urlType !== 'empty' && urlType !== 'iframe' && (
+        <div 
+            className={cn(
+                "absolute inset-0 z-20 flex flex-col justify-between p-1 md:p-2 bg-gradient-to-t from-black/60 via-transparent to-black/20 transition-opacity duration-300",
+                showControls ? "opacity-100" : "opacity-0"
+            )}
+            onClick={(e) => e.stopPropagation()} 
+        >
+            <div></div>
+            <div className="flex items-center justify-center">
+            {canControl && (
+                <Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-16 md:h-16">
+                    {playerState?.isPlaying ? <Pause className="w-8 h-8 md:w-10 md:h-10 fill-white" /> : <Play className="w-8 h-8 md:w-10 md:h-10 fill-white" />}
+                </Button>
+            )}
+            </div>
+            <div className="flex items-center gap-1 md:gap-2 text-white font-mono text-xs md:text-sm">
+            {canControl ? (
+                <>
+                <span className="w-12 text-center">{formatTime(progress)}</span>
+                <Slider value={[progress]} max={duration || 100} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} />
+                <span className="w-12 text-center">{formatTime(duration)}</span>
+                </>
+            ) : (
+                <>
+                <span className="w-12 text-center">{formatTime(progress)}</span>
+                <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden">
+                    <div className="absolute h-full bg-primary" style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%`}}></div>
+                </div>
+                <span className="w-12 text-center">{formatTime(duration)}</span>
+                </>
+            )}
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
+                            <VolumeIcon className="w-4 h-4 md:w-5 md:h-5" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none">
+                        <Slider value={[volume]} max={1} step={0.05} orientation="vertical" className="h-24 w-2" onValueChange={handleVolumeChange} />
+                    </PopoverContent>
+                </Popover>
+                {urlType === 'youtube' && canControl && (
+                <Popover>
+                    <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9">
+                        <Settings className="w-4 h-4 md:w-5 md:h-5" />
+                    </Button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none">
+                    <RadioGroup value={quality} onValueChange={handleQualityChange} className="text-white text-sm">
+                        <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="auto" id="qauto" />
+                        <Label htmlFor="qauto">Auto</Label>
+                        </div>
+                        {['hd1080', 'hd720', 'large', 'medium'].map(q => (
+                        <div key={q} className="flex items-center space-x-2">
+                            <RadioGroupItem value={q} id={`q${q}`} />
+                            <Label htmlFor={`q${q}`}>{q.replace('hd', '').replace('large', '480p').replace('medium', '360p')}</Label>
+                        </div>
+                        ))}
+                    </RadioGroup>
+                    </PopoverContent>
+                </Popover>
+                )}
+            </div>
+        </div>
+      )}
     </div>
   );
 };
