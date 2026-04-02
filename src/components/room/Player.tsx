@@ -14,11 +14,9 @@ import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 3: ADVANCED SYNC & SOFT CORRECTION)
+ * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 5: HARDENED SYNC)
  * ---------------------------------------------------------------------
- * Implementation of a high-precision synchronization algorithm.
- * Features: Soft sync (playback rate adjustment) and Hard sync (seeking).
- * Source of truth: Firebase Server State.
+ * Robust synchronization with error boundaries and state protection.
  */
 
 interface PlayerProps {
@@ -95,20 +93,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Local cache for volume and quality
-  const [volume, setVolume] = useState(() => getCachedState('global', 'volume', playerState?.volume ?? 0.8));
-  const [quality, setQuality] = useState(() => getCachedState('global', 'quality', playerState?.quality ?? 'auto'));
+  const [volume, setVolume] = useState(() => getCachedState('global', 'volume', 0.8));
+  const [quality, setQuality] = useState(() => getCachedState('global', 'quality', 'auto'));
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
   /**
-   * ADVANCED SYNCHRONIZATION LOGIC (PHASE 3)
-   * Calculates drift and applies correction strategies.
+   * SYNCHRONIZATION LOOP PROTECTION (PHASE 5)
+   * Hardened sync logic with extensive error boundaries.
    */
   const syncPlayerState = useCallback(() => {
-    // 1. Skip sync if tab is background or player is not ready
-    if (document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
+    // 1. Safety Checks
+    if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
       return;
     }
   
@@ -116,82 +113,82 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     let localPlayer: any = null;
   
     try {
-      if (ytPlayerRef.current) {
-        currentPlayerTime = ytPlayerRef.current.getCurrentTime();
+      if (ytPlayerRef.current && urlType === 'youtube') {
         localPlayer = ytPlayerRef.current;
-        const ytState = ytPlayerRef.current.getPlayerState();
-        if (ytState === 3) return; // Buffering
-      } else if (htmlPlayerRef.current) {
-        currentPlayerTime = htmlPlayerRef.current.currentTime;
+        const ytState = localPlayer.getPlayerState();
+        if (ytState === 3 || ytState === -1) return; // Buffering or Unstarted
+        currentPlayerTime = localPlayer.getCurrentTime();
+      } else if (htmlPlayerRef.current && urlType === 'direct') {
         localPlayer = htmlPlayerRef.current;
-        if (htmlPlayerRef.current.readyState < 2) return;
+        if (localPlayer.readyState < 2) return; // Not enough data
+        currentPlayerTime = localPlayer.currentTime;
       } else {
         return;
       }
     } catch (e) {
+      console.warn('[Sync] Player ref access failed:', e);
       return;
     }
   
-    // 2. Calculate Server Time (Reference Time)
-    // Formula: seekTime + (isPlaying ? elapsedSinceServerTimestamp : 0)
-    const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
+    // 2. Reference Time Calculation
+    const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (Date.now() - (playerState.timestamp || Date.now())) / 1000 : 0);
     const timeDifference = serverTime - currentPlayerTime;
     const absDifference = Math.abs(timeDifference);
   
     try {
-      // 3. Apply Correction Strategies
+      // 3. Correction Strategies
       
-      // A. Hard Sync (Significant Drift > 2s)
+      // Hard Sync (> 2s)
       if (absDifference > 2) { 
-        if (localPlayer === ytPlayerRef.current) (localPlayer as YouTubePlayer).seekTo(serverTime, true);
-        else (localPlayer as HTMLVideoElement).currentTime = serverTime;
-        
-        // Reset playback rate during hard sync
-        if (localPlayer === ytPlayerRef.current) (localPlayer as YouTubePlayer).setPlaybackRate(1);
-        else (localPlayer as HTMLVideoElement).playbackRate = 1;
-      } 
-      // B. Soft Sync (Minor Drift 0.5s - 2s) - Adjust playback rate subtly
-      else if (absDifference > 0.5) { 
-        const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
-        if (localPlayer === ytPlayerRef.current) {
-            const currentRate = (localPlayer as YouTubePlayer).getPlaybackRate();
-            if (currentRate !== playbackRate) (localPlayer as YouTubePlayer).setPlaybackRate(playbackRate);
+        if (urlType === 'youtube') {
+            localPlayer.seekTo(serverTime, true);
+            localPlayer.setPlaybackRate(1);
         } else {
-            const currentRate = (localPlayer as HTMLVideoElement).playbackRate;
-            if (currentRate !== playbackRate) (localPlayer as HTMLVideoElement).playbackRate = playbackRate;
+            localPlayer.currentTime = serverTime;
+            localPlayer.playbackRate = 1;
         }
       } 
-      // C. In Sync (Drift < 0.5s) - Maintain normal speed
-      else { 
-         if (localPlayer === ytPlayerRef.current) {
-            if ((localPlayer as YouTubePlayer).getPlaybackRate() !== 1) (localPlayer as YouTubePlayer).setPlaybackRate(1);
+      // Soft Sync (0.5s - 2s)
+      else if (absDifference > 0.5) { 
+        const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
+        if (urlType === 'youtube') {
+            if (localPlayer.getPlaybackRate() !== playbackRate) localPlayer.setPlaybackRate(playbackRate);
         } else {
-            if ((localPlayer as HTMLVideoElement).playbackRate !== 1) (localPlayer as HTMLVideoElement).playbackRate = 1;
+            if (localPlayer.playbackRate !== playbackRate) localPlayer.playbackRate = playbackRate;
+        }
+      } 
+      // In Sync (< 0.5s)
+      else { 
+         if (urlType === 'youtube') {
+            if (localPlayer.getPlaybackRate() !== 1) localPlayer.setPlaybackRate(1);
+        } else {
+            if (localPlayer.playbackRate !== 1) localPlayer.playbackRate = 1;
         }
       }
   
       // 4. Play/Pause State Sync
-      if (localPlayer === ytPlayerRef.current) {
-        const ytState = (localPlayer as YouTubePlayer).getPlayerState();
+      if (urlType === 'youtube') {
+        const ytState = localPlayer.getPlayerState();
         if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
-          (localPlayer as YouTubePlayer).playVideo();
+          localPlayer.playVideo();
         } else if (!playerState.isPlaying && ytState === 1) {
-          (localPlayer as YouTubePlayer).pauseVideo();
+          localPlayer.pauseVideo();
         }
       } else {
-        if (playerState.isPlaying && (localPlayer as HTMLVideoElement).paused) {
-          (localPlayer as HTMLVideoElement).play().catch(() => {});
-        } else if (!playerState.isPlaying && !(localPlayer as HTMLVideoElement).paused) {
-          (localPlayer as HTMLVideoElement).pause();
+        if (playerState.isPlaying && localPlayer.paused) {
+          localPlayer.play().catch(() => {});
+        } else if (!playerState.isPlaying && !localPlayer.paused) {
+          localPlayer.pause();
         }
       }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('[Sync] Application failed:', e);
+    }
   
-  }, [playerState, duration]);
+  }, [playerState, duration, urlType]);
 
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-    // Interval set to 1s for reactive sync without overhead
     syncIntervalRef.current = setInterval(syncPlayerState, 1000);
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
@@ -214,31 +211,34 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) {}
   }, [canControl, urlType]);
 
+  // Media Session metadata & controls
   useEffect(() => {
-    if ('mediaSession' in navigator) {
+    if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
       if (!videoDetails || urlType === 'empty') {
         navigator.mediaSession.metadata = null;
         return;
       }
       
-      const artwork = [];
-      if (videoDetails.snippet.thumbnails.high) artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
-      if (videoDetails.snippet.thumbnails.medium) artwork.push({ src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' });
+      try {
+          const artwork = [];
+          if (videoDetails.snippet.thumbnails.high) artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
+          if (videoDetails.snippet.thumbnails.medium) artwork.push({ src: videoDetails.snippet.thumbnails.medium.url, sizes: '320x180', type: 'image/jpeg' });
 
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: videoDetails.snippet.title,
-        artist: videoDetails.snippet.channelTitle,
-        album: 'اصيل سينما',
-        artwork: artwork
-      });
-      
-      navigator.mediaSession.setActionHandler('play', canControl ? () => togglePlay() : null);
-      navigator.mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: videoDetails.snippet.title,
+            artist: videoDetails.snippet.channelTitle,
+            album: 'اصيل سينما',
+            artwork: artwork
+          });
+          
+          navigator.mediaSession.setActionHandler('play', canControl ? () => togglePlay() : null);
+          navigator.mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
+      } catch (e) {}
     }
   }, [videoDetails, canControl, togglePlay, urlType]);
 
   useEffect(() => {
-    if ('mediaSession' in navigator) {
+    if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
         navigator.mediaSession.playbackState = playerState?.isPlaying ? "playing" : "paused";
     }
   }, [playerState?.isPlaying]);
@@ -248,8 +248,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
         if (!playerState || !duration || duration === 0 || isSeekingRef.current) return;
-        const serverTime = playerState.seekTime + (playerState.isPlaying ? (Date.now() - playerState.timestamp) / 1000 : 0);
-        setProgress(Math.min(serverTime, duration));
+        const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (Date.now() - (playerState.timestamp || Date.now())) / 1000 : 0);
+        setProgress(Math.max(0, Math.min(serverTime, duration)));
     };
     
     updateProgress();
@@ -298,7 +298,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const handleSliderCommit = (value: number[]) => {
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
-      try { if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true); } catch(e) {}
+      try { 
+          if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true); 
+          if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+      } catch(e) {}
       onPlayerStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
   };
@@ -311,13 +314,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
         if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
     } catch (e) {}
-    // Volume is a local user preference, not synced to server state unless explicitly needed
   };
   
   const handleQualityChange = (newQuality: string) => {
     setQuality(newQuality);
     setCachedState('global', 'quality', newQuality);
-    // Quality is local
   }
 
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -395,11 +396,19 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return date.toISOString().substr(hasHours ? 11 : 14, hasHours ? 8 : 5);
   };
 
+  // Cleanup effects
+  useEffect(() => {
+      return () => {
+          if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      }
+  }, []);
+
   const renderContent = () => {
     switch(urlType) {
         case 'youtube':
             if (!videoId) return renderEmptyState('Invalid YouTube URL');
-            const startSeconds = (playerState?.seekTime ?? 0) + ((playerState?.isPlaying && playerState?.timestamp) ? (Date.now() - playerState.timestamp) / 1000 : 0);
+            const serverTs = playerState?.timestamp || Date.now();
+            const startSeconds = (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - serverTs) / 1000 : 0);
             return (
                 <YouTube
                   key={`${videoId}-${quality}`}
@@ -409,7 +418,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                     width: '100%',
                     playerVars: {
                       autoplay: playerState?.isPlaying ? 1 : 0,
-                      start: Math.floor(startSeconds),
+                      start: Math.floor(Math.max(0, startSeconds)),
                       controls: 0,
                       rel: 0,
                       showinfo: 0,
@@ -428,11 +437,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
                 />
             );
         case 'direct':
-             const directStartSeconds = (playerState?.seekTime ?? 0) + ((playerState?.isPlaying && playerState?.timestamp) ? (Date.now() - playerState.timestamp) / 1000 : 0);
+             const directTs = playerState?.timestamp || Date.now();
+             const directStartSeconds = (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - directTs) / 1000 : 0);
             return (
                 <video
                     ref={htmlPlayerRef}
-                    src={`${videoUrl}#t=${directStartSeconds}`}
+                    src={`${videoUrl}#t=${Math.max(0, directStartSeconds)}`}
                     className="w-full h-full object-contain"
                     onLoadedData={onHtmlReady}
                     onPlay={onHtmlStateChange}
@@ -509,14 +519,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
            {canControl ? (
             <>
                <span className="w-12 text-center">{formatTime(progress)}</span>
-               <Slider value={[progress]} max={duration} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} />
+               <Slider value={[progress]} max={duration || 100} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} />
                <span className="w-12 text-center">{formatTime(duration)}</span>
             </>
            ) : (
              <>
                <span className="w-12 text-center">{formatTime(progress)}</span>
                <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden">
-                 <div className="absolute h-full bg-primary" style={{ width: `${(progress / duration) * 100}%`}}></div>
+                 <div className="absolute h-full bg-primary" style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%`}}></div>
                </div>
                <span className="w-12 text-center">{formatTime(duration)}</span>
             </>

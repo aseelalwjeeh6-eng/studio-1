@@ -18,10 +18,25 @@ export interface CacheOptions {
 }
 
 /**
+ * Validates if the environment is browser and storage is accessible
+ */
+const isStorageAvailable = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const x = '__storage_test__';
+    window.localStorage.setItem(x, x);
+    window.localStorage.removeItem(x);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
  * Sets a value in the local cache with metadata.
  */
 export function setCachedState<T>(roomId: string, key: string, value: T, options?: CacheOptions) {
-  if (typeof window === 'undefined') return;
+  if (!isStorageAvailable()) return;
   try {
     const storageKey = `${APP_PREFIX}${roomId}_${key}`;
     const entry: CacheEntry<T> = {
@@ -30,10 +45,10 @@ export function setCachedState<T>(roomId: string, key: string, value: T, options
       version: CACHE_VERSION,
       ttl: options?.ttl,
     };
-    localStorage.setItem(storageKey, JSON.stringify(entry));
+    window.localStorage.setItem(storageKey, JSON.stringify(entry));
   } catch (e) {
-    // Fail silently to avoid interrupting app flow
-    console.warn('Cache write error:', e);
+    // Fail silently or log for developers
+    console.warn('[Cache] Set failed:', e);
   }
 }
 
@@ -41,25 +56,29 @@ export function setCachedState<T>(roomId: string, key: string, value: T, options
  * Retrieves a value from the local cache, validating version and TTL.
  */
 export function getCachedState<T>(roomId: string, key: string, defaultValue: T): T {
-  if (typeof window === 'undefined') return defaultValue;
+  if (!isStorageAvailable()) return defaultValue;
   try {
     const storageKey = `${APP_PREFIX}${roomId}_${key}`;
-    const raw = localStorage.getItem(storageKey);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return defaultValue;
 
     const entry: CacheEntry<T> = JSON.parse(raw);
 
     // Validate version - if version mismatch, ignore cache
-    if (entry.version !== CACHE_VERSION) return defaultValue;
+    if (entry.version !== CACHE_VERSION) {
+      window.localStorage.removeItem(storageKey);
+      return defaultValue;
+    }
 
     // Validate TTL - if expired, remove and ignore
     if (entry.ttl && Date.now() - entry.timestamp > entry.ttl) {
-      localStorage.removeItem(storageKey);
+      window.localStorage.removeItem(storageKey);
       return defaultValue;
     }
 
     return entry.value;
   } catch (e) {
+    console.warn('[Cache] Get failed:', e);
     return defaultValue;
   }
 }
@@ -68,11 +87,13 @@ export function getCachedState<T>(roomId: string, key: string, defaultValue: T):
  * Clears specific room cache.
  */
 export function clearRoomCache(roomId: string) {
-  if (typeof window === 'undefined') return;
+  if (!isStorageAvailable()) return;
   try {
     const prefix = `${APP_PREFIX}${roomId}_`;
-    Object.keys(localStorage).forEach((k) => {
-      if (k.startsWith(prefix)) localStorage.removeItem(k);
+    Object.keys(window.localStorage).forEach((k) => {
+      if (k.startsWith(prefix)) window.localStorage.removeItem(k);
     });
-  } catch (e) {}
+  } catch (e) {
+    console.warn('[Cache] Clear failed:', e);
+  }
 }
