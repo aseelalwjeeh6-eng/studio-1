@@ -42,10 +42,10 @@ export default function FriendsPage() {
   // Presence listener
   useEffect(() => {
       const presenceRef = ref(database, 'presence');
-      const listener = onValue(presenceRef, (snapshot) => {
+      const unsub = onValue(presenceRef, (snapshot) => {
         setPresences(snapshot.val() ?? {});
       });
-      return () => off(presenceRef, 'value', listener);
+      return () => unsub();
   }, []);
 
   const fetchFriendsAndRequests = async () => {

@@ -692,13 +692,14 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             });
         })
     ];
-    return () => { isMounted = false; listeners.forEach(off); };
+    return () => { isMounted = false; listeners.forEach(unsub => unsub()); };
   }, [isLoaded, user, roomId]);
 
   useEffect(() => {
     if (!isLoaded) return;
     if (!user) { router.push('/'); return; }
     let active = true;
+    let connectedUnsub: Unsubscribe | null = null;
     
     const setup = async () => {
       try {
@@ -709,7 +710,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         setRoomData(p => ({ ...p, password: data.password, checked: true }));
         
         const connectedRef = ref(database, '.info/connected');
-        onValue(connectedRef, s => {
+        connectedUnsub = onValue(connectedRef, s => {
           if (s.val() === true && active) {
             goOnline(database);
             const mRef = ref(database, `rooms/${roomId}/members/${user.name}`);
@@ -732,7 +733,10 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
       }
     };
     setup();
-    return () => { active = false; };
+    return () => { 
+        active = false; 
+        if (connectedUnsub) connectedUnsub();
+    };
   }, [isLoaded, user, roomId, router]);
 
   const sendSystemMessage = useCallback(async (text: string) => {

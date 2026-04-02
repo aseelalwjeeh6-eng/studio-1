@@ -121,15 +121,15 @@ export function MainHeader() {
     const invitesRef = ref(database, `users/${user.name}/invitations`);
     const coinsRef = ref(database, `users/${user.name}/coins`);
 
-    const requestsListener = onValue(requestsRef, (snapshot) => {
+    const requestsUnsub = onValue(requestsRef, (snapshot) => {
       setFriendRequests(snapshot.exists() ? Object.values(snapshot.val()) : []);
     });
     
-    const invitesListener = onValue(invitesRef, (snapshot) => {
+    const invitesUnsub = onValue(invitesRef, (snapshot) => {
       setInvitations(snapshot.exists() ? Object.values(snapshot.val()) : []);
     });
     
-    const coinsListener = onValue(coinsRef, (snapshot) => {
+    const coinsUnsub = onValue(coinsRef, (snapshot) => {
         const newCoins = snapshot.val();
         if (newCoins !== null) {
             setUser(prev => prev ? { ...prev, coins: newCoins } : null);
@@ -137,9 +137,9 @@ export function MainHeader() {
     });
 
     return () => {
-      off(requestsRef, 'value', requestsListener);
-      off(invitesRef, 'value', invitesListener);
-      off(coinsRef, 'value', coinsListener);
+      requestsUnsub();
+      invitesUnsub();
+      coinsUnsub();
     };
   }, [user?.name, setUser]);
   

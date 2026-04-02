@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -47,7 +45,7 @@ export default function LobbyPage() {
 
   useEffect(() => {
     const roomsRef = ref(database, 'rooms');
-    const listener = onValue(roomsRef, (snapshot) => {
+    const unsub = onValue(roomsRef, (snapshot) => {
       const roomsData = snapshot.val();
       const loadedRooms: RoomData[] = [];
       let hostedRoom: RoomData | null = null;
@@ -79,7 +77,7 @@ export default function LobbyPage() {
       setIsLoadingHostedRoom(false);
     });
 
-    return () => off(roomsRef, 'value', listener);
+    return () => unsub();
   }, [user]);
 
   const handleCreateRoom = async () => {
@@ -256,5 +254,3 @@ export default function LobbyPage() {
     </div>
   );
 }
-
-    
