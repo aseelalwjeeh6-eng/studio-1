@@ -31,17 +31,17 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Switch } from '../ui/switch';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
 import { Gifts } from '@/lib/gifts';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - ROOM ARCHITECTURE (PHASE 2: CACHING LAYER)
+ * TECHNICAL ANALYSIS - ROOM ARCHITECTURE (PHASE 3: BACKUP CONTROLLER & HEARTBEAT)
  * -------------------------------------------------------------
- * Implementation of a non-blocking cache layer using getCachedState and setCachedState.
- * Goal: Instant UI responsiveness and resilience to network drops.
+ * Ensures the room continues functioning even if the host leaves.
+ * Deterministic selection of a "Sync Driver" among present users.
  */
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -219,6 +219,34 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const isHost = user?.name === roomBasicInfo.hostName;
   const isModerator = roomBasicInfo.moderators.includes(user.name);
   const canControl = isHost || isModerator;
+
+  /**
+   * DETERMINISTIC SYNC DRIVER (PHASE 3)
+   * The oldest present controller (host/mod) or oldest user is responsible for the heartbeat.
+   */
+  const syncDriver = useMemo(() => {
+    if (membersState.all.length === 0) return null;
+    
+    // Sort all present members by their join time
+    const sortedMembers = [...membersState.all].sort((a, b) => {
+        const timeA = a.joinedAt?.seconds || a.joinedAt || 0;
+        const timeB = b.joinedAt?.seconds || b.joinedAt || 0;
+        return timeA - timeB;
+    });
+
+    // 1. Try to find the Host
+    const hostMember = sortedMembers.find(m => m.name === roomBasicInfo.hostName);
+    if (hostMember) return hostMember.name;
+
+    // 2. Try to find the oldest Moderator
+    const modMember = sortedMembers.find(m => roomBasicInfo.moderators.includes(m.name));
+    if (modMember) return modMember.name;
+
+    // 3. Fallback to the oldest present User
+    return sortedMembers[0].name;
+  }, [membersState.all, roomBasicInfo.hostName, roomBasicInfo.moderators]);
+
+  const isSyncDriver = user.name === syncDriver;
 
   const viewers = useMemo(() => {
     const seatedNames = new Set(membersState.seated.map(m => m.name));
@@ -417,21 +445,27 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     return () => { isMounted = false; listeners.forEach(unsub => unsub()); };
   }, [roomId, router]);
 
-  // Heartbeat - Ensure room clock advances regardless of host activity
+  /**
+   * HEARTBEAT SYNC (PHASE 3)
+   * Only the designated Sync Driver updates the server timestamp to keep clocks aligned.
+   */
   useEffect(() => {
     let heartbeatInterval: NodeJS.Timeout | null = null;
-    if (canControl && playerState?.isPlaying) {
+    if (isSyncDriver && playerState?.isPlaying) {
         heartbeatInterval = setInterval(() => {
+            // Only update if the tab is visible to avoid unnecessary writes
             if (document.visibilityState === 'visible') {
                 runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
-                    if (curr && curr.isPlaying) return { ...curr, timestamp: serverTimestamp() };
+                    if (curr && curr.isPlaying) {
+                        return { ...curr, timestamp: serverTimestamp() };
+                    }
                     return curr;
                 }).catch(() => {});
             }
         }, 5000);
     }
     return () => { if(heartbeatInterval) clearInterval(heartbeatInterval); };
-  }, [canControl, playerState?.isPlaying, roomId]);
+  }, [isSyncDriver, playerState?.isPlaying, roomId]);
 
   useEffect(() => {
       if(typeof window !== 'undefined') {
@@ -503,6 +537,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
         const c = curr || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
         const updated = { ...c, ...newState };
+        // If isPlaying changed or seekTime changed, we must update the timestamp
         const shouldStamp = (newState.isPlaying !== undefined && newState.isPlaying !== c.isPlaying) || newState.seekTime !== undefined;
         return shouldStamp ? { ...updated, timestamp: serverTimestamp() } : updated;
     });
@@ -557,7 +592,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
              <RoomHeader 
                 onSearchClick={() => setDialogs(prev => ({...prev, search: true}))} onPlaylistClick={() => setDialogs(prev => ({...prev, playlist: true}))}
                 roomId={roomId} onLeaveRoom={handleLeaveRoom} onSwitchToVideo={() => onSetVideo('', 0)} 
-                onSwitchToPlayer={() => setVideoState(p => ({...prev, mode: false}))} videoMode={videoState.mode}
+                onSwitchToPlayer={() => setVideoState(prev => ({...prev, mode: false}))} videoMode={videoState.mode}
                 onInviteClick={() => setDialogs(prev => ({...prev, invite: true}))} onSettingsClick={() => setDialogs(prev => ({...prev, settings: true}))}
                 roomName={roomBasicInfo.name} hostName={roomBasicInfo.hostName} canControl={canControl}
             />
@@ -642,13 +677,24 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     return () => { active = false; };
   }, [isLoaded, user, roomId, router]);
 
+  const sendSystemMessage = useCallback(async (text: string) => {
+    const newMsgRef = push(ref(database, `rooms/${roomId}/chat`));
+    await set(newMsgRef, {
+        id: newMsgRef.key!,
+        sender: 'System',
+        text,
+        timestamp: serverTimestamp(),
+        isSystemMessage: true
+    });
+  }, [roomId]);
+
   if (!isLoaded || !user || !roomData.checked) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-16 w-16 animate-spin text-accent" /></div>;
   if (!livekitUrl) return <div className="flex h-screen items-center justify-center text-center p-4 bg-background"><div className='max-w-md bg-card/50 p-8 rounded-lg border border-destructive'><h1 className="text-2xl font-bold text-destructive mb-4">خطأ إعدادات</h1><p>LIVEKIT_URL مفقود.</p><Button onClick={() => router.push('/lobby')} className="mt-6 w-full">العودة للردهة</Button></div></div>;
   if (!roomData.token) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-16 w-16 animate-spin text-accent" /><p className="ms-4 text-muted-foreground">تهيئة...</p></div>;
 
   return (
     <LiveKitRoom token={roomData.token} serverUrl={livekitUrl} user={user} isSeated={roomData.seated} videoMode={roomData.videoMode}>
-      <RoomLayout roomId={roomId} user={user} sendSystemMessage={() => {}} roomPassword={roomData.password} onCorrectPassword={() => setRoomData(p => ({ ...p, password: undefined }))} isPasswordChecked={roomData.checked} />
+      <RoomLayout roomId={roomId} user={user} sendSystemMessage={sendSystemMessage} roomPassword={roomData.password} onCorrectPassword={() => setRoomData(p => ({ ...p, password: undefined }))} isPasswordChecked={roomData.checked} />
     </LiveKitRoom>
   );
 };
