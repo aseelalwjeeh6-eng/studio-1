@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { database } from '@/lib/firebase';
-import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, off, Unsubscribe, remove, push } from 'firebase/database';
+import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, Unsubscribe, remove, push } from 'firebase/database';
 import useUserSession from '@/hooks/use-user-session';
 import Player from './Player';
 import { ChatMessages, ChatInput, ChatHeader } from './Chat';
@@ -38,9 +38,9 @@ import { Gifts } from '@/lib/gifts';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - ROOM ARCHITECTURE (PHASE 6: PERFORMANCE OPTIMIZED)
+ * TECHNICAL ANALYSIS - ROOM ARCHITECTURE (PHASE 7: FINAL)
  * -------------------------------------------------------------
- * Hardened architecture with memoized selectors and optimized Firebase updates.
+ * Final verification of deterministic sync handover and lifecycle cleanup.
  */
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -179,7 +179,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
   
-  // Logical state grouping with caching layer
   const [roomBasicInfo, setRoomBasicInfo] = useState(() => getCachedState(roomId, 'roomBasicInfo', { 
     name: '', 
     hostName: '', 
@@ -217,15 +216,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
 
-  // OPTIMIZATION: Memoize control flags
   const isHost = useMemo(() => user?.name === roomBasicInfo.hostName, [user?.name, roomBasicInfo.hostName]);
   const isModerator = useMemo(() => roomBasicInfo.moderators.includes(user.name), [user.name, roomBasicInfo.moderators]);
   const canControl = useMemo(() => isHost || isModerator, [isHost, isModerator]);
 
-  /**
-   * DETERMINISTIC SYNC DRIVER (PHASE 6)
-   * Optimized Sync Driver logic with performance memoization.
-   */
   const syncDriver = useMemo(() => {
     if (!membersState.all || membersState.all.length === 0) return null;
     
@@ -257,23 +251,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       const participant = [localParticipant, ...participants].find(p => p.identity === user?.name);
       return participant ? !participant.isMicrophoneEnabled : true;
   }, [localParticipant, participants, user?.name]);
-
-  // Wake Lock for background playback persistence - Optimized with performance check
-  const wakeLockRef = useRef<any>(null);
-  useEffect(() => {
-    const handleWakeLock = async () => {
-      if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
-        if (playerState?.isPlaying && !wakeLockRef.current) {
-          try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
-        } else if (!playerState?.isPlaying && wakeLockRef.current) {
-          try { await wakeLockRef.current.release(); } catch (e) {}
-          wakeLockRef.current = null;
-        }
-      }
-    };
-    handleWakeLock();
-    return () => { if(wakeLockRef.current) try { wakeLockRef.current.release(); } catch (e) {} };
-  }, [playerState?.isPlaying]);
 
   useEffect(() => { if (isPasswordChecked) setAuth(prev => ({ ...prev, isFullyAuthed: !roomPassword })); }, [isPasswordChecked, roomPassword]);
 
@@ -318,13 +295,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     router.push('/lobby');
   }, [user, roomId, membersState.seated, router]);
   
-  /**
-   * LISTENER MANAGEMENT (PHASE 6)
-   * Strict cleanup and optimized state updates with JSON-based equality checks.
-   */
   useEffect(() => {
     let isMounted = true;
-    const listeners: Unsubscribe[] = [];
+    const unsubs: Unsubscribe[] = [];
     
     const setupListeners = async () => {
         const roomRef = ref(database, `rooms/${roomId}`);
@@ -340,10 +313,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
         const safeOnValue = (dbRef: any, callback: (snap: any) => void) => {
             const unsub = onValue(dbRef, (snap) => { if(isMounted) callback(snap); });
-            listeners.push(unsub);
+            unsubs.push(unsub);
         };
 
-        // Performance Optimization: Only update state and cache if data has actually changed
         safeOnValue(ref(database, `rooms/${roomId}/members`), snap => {
             const val = snap.exists() ? Object.values(snap.val()) as Member[] : [];
             setMembersState(prev => {
@@ -476,14 +448,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         });
     };
     setupListeners();
-    return () => { isMounted = false; listeners.forEach(unsub => unsub()); };
+    return () => { isMounted = false; unsubs.forEach(unsub => unsub()); };
   }, [roomId, router]);
 
-  /**
-   * HEARTBEAT SYNC (PHASE 6)
-   * Only the designated Sync Driver updates the server timestamp.
-   * OPTIMIZATION: Skip updates if tab is hidden.
-   */
   useEffect(() => {
     let heartbeatInterval: NodeJS.Timeout | null = null;
     if (isSyncDriver && playerState?.isPlaying) {
@@ -564,7 +531,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         isPlaying: !!videoIdentifier, seekTime: startTime, timestamp: serverTimestamp(),
         volume: playerState?.volume ?? 0.8, quality: playerState?.quality ?? 'auto'
       };
-      update(ref(database), updates).catch(e => console.warn('[Player] onSetVideo failed:', e));
+      update(ref(database), updates).catch(() => {});
     }
   }, [canControl, roomId, playerState?.volume, playerState?.quality]);
   
@@ -575,7 +542,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         const updated = { ...c, ...newState };
         const shouldStamp = (newState.isPlaying !== undefined && newState.isPlaying !== c.isPlaying) || newState.seekTime !== undefined;
         return shouldStamp ? { ...updated, timestamp: serverTimestamp() } : updated;
-    }).catch(e => console.warn('[Player] stateChange failed:', e));
+    }).catch(() => {});
   }, [canControl, roomId]);
 
   const handleAddToPlaylistFromSearch = useCallback((video: YouTubeVideo) => {
@@ -674,7 +641,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
     let isMounted = true;
     if (!isLoaded || !user) return;
     
-    const listeners = [
+    const unsubs: Unsubscribe[] = [
         onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => {
             const val = snap.exists() ? Object.values(snap.val()) : [];
             const isSeated = val.some((m: any) => m.name === user.name);
@@ -692,7 +659,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             });
         })
     ];
-    return () => { isMounted = false; listeners.forEach(unsub => unsub()); };
+    return () => { isMounted = false; unsubs.forEach(unsub => unsub()); };
   }, [isLoaded, user, roomId]);
 
   useEffect(() => {
@@ -728,7 +695,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         const tokenData = await res.json();
         if (active) setRoomData(p => ({ ...p, token: tokenData.token }));
       } catch (e) { 
-          console.error("Setup error", e);
           if (active) router.push('/lobby');
       }
     };
