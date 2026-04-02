@@ -46,13 +46,11 @@ export default function ProfilePage() {
     }
     if (user) {
       setCurrentAvatarId(user.avatarId);
-      // Fetch full user data to get generated avatars and coins
       getUserData(user.name).then(fullUser => {
         if (fullUser) {
           if (fullUser.generatedAvatars) {
             setGeneratedAvatars(fullUser.generatedAvatars);
           }
-          // Update user session with full data
           setUser(prev => ({...prev, ...fullUser}));
         }
       });
@@ -71,7 +69,6 @@ export default function ProfilePage() {
         setSelectedImage(null);
       } catch (error) {
         console.error('فشل تحديث الصورة الرمزية.');
-        console.error(error);
       }
     });
   };
@@ -94,7 +91,6 @@ export default function ProfilePage() {
   const handleGenerateAvatar = async () => {
     if (!avatarPrompt.trim() || !user) return;
     setIsGenerating(true);
-    console.log('يتم إنشاء الصورة الرمزية...');
     try {
         const { imageUrl } = await generateAvatar({ prompt: avatarPrompt });
         const newAvatar: ImagePlaceholder = {
@@ -103,17 +99,11 @@ export default function ProfilePage() {
             imageUrl: imageUrl,
             imageHint: 'generated avatar'
         };
-
         setGeneratedAvatars(prev => [newAvatar, ...prev]);
-        
         await upsertUser({ name: user.name, newAvatar: newAvatar });
-        
         setAvatarPrompt('');
-        console.log("تم إنشاء الصورة الرمزية! يمكنك الآن تحديدها وتعيينها.");
-
     } catch (error) {
         console.error("Avatar generation failed:", error);
-        console.error("فشل إنشاء الصورة. يرجى المحاولة مرة أخرى.");
     } finally {
         setIsGenerating(false);
     }
@@ -124,18 +114,14 @@ export default function ProfilePage() {
         setDeleteError('يرجى إدخال كلمة المرور لتأكيد الحذف.');
         return;
     }
-    
     setDeleteError('');
     setIsDeleting(true);
-    
     try {
         await deleteUserAccount(user.name, deletePassword);
-        
-        // Success actions
         window.alert('تم حذف حسابك بنجاح. سنفتقدك!');
         setIsDeleteDialogOpen(false);
-        setUser(null); // Logout session
-        router.push('/'); // Redirect to landing
+        setUser(null);
+        router.push('/');
     } catch (error: any) {
         setDeleteError(error.message || 'فشلت عملية الحذف. يرجى التأكد من كلمة المرور.');
     } finally {
@@ -270,24 +256,9 @@ export default function ProfilePage() {
                      {selectableAvatars.map((img) => {
                       const isSelectedForAction = selectedImage?.id === img.id;
                       const isCurrentAvatar = currentAvatarId === img.id;
-
                       return (
-                        <div
-                          key={img.id}
-                          className="relative cursor-pointer group"
-                          onClick={() => setSelectedImage(img)}
-                        >
-                          <Image
-                            src={img.imageUrl}
-                            alt={img.description}
-                            width={100}
-                            height={100}
-                            className={cn(
-                              "w-full h-full aspect-square object-cover border-4 transition-all rounded-full",
-                              isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50"
-                            )}
-                            data-ai-hint={img.imageHint}
-                          />
+                        <div key={img.id} className="relative cursor-pointer group" onClick={() => setSelectedImage(img)}>
+                          <Image src={img.imageUrl} alt={img.description} width={100} height={100} className={cn("w-full h-full aspect-square object-cover border-4 transition-all rounded-full", isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50")} data-ai-hint={img.imageHint} />
                           {isCurrentAvatar && !isSelectedForAction && (
                             <div className="absolute -top-1 -right-1 bg-primary rounded-full p-1 text-primary-foreground" title="الصورة الرمزية الحالية">
                                 <CheckCircle className="w-5 h-5" />
@@ -298,9 +269,7 @@ export default function ProfilePage() {
                     })}
                   </div>
                 </div>
-
                 <Separator />
-                
                 <div>
                    <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-bold flex items-center gap-2">
@@ -316,22 +285,8 @@ export default function ProfilePage() {
                      {selectableBackgrounds.map((img) => {
                        const isSelectedForAction = selectedImage?.id === img.id;
                        return (
-                        <div
-                          key={img.id}
-                          className="relative cursor-pointer group"
-                          onClick={() => setSelectedImage(img)}
-                        >
-                          <Image
-                            src={img.imageUrl}
-                            alt={img.description}
-                            width={1920}
-                            height={1080}
-                            className={cn(
-                              "w-full h-full aspect-video object-cover border-4 transition-all rounded-lg",
-                              isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50"
-                            )}
-                            data-ai-hint={img.imageHint}
-                          />
+                        <div key={img.id} className="relative cursor-pointer group" onClick={() => setSelectedImage(img)}>
+                          <Image src={img.imageUrl} alt={img.description} width={1920} height={1080} className={cn("w-full h-full aspect-video object-cover border-4 transition-all rounded-lg", isSelectedForAction ? "border-accent ring-4 ring-accent/50" : "border-transparent group-hover:border-accent/50")} data-ai-hint={img.imageHint} />
                         </div>
                        );
                      })}
@@ -402,20 +357,8 @@ export default function ProfilePage() {
                 )}
             </div>
             <DialogFooter className="flex flex-col sm:flex-row gap-3">
-                <Button 
-                    variant="outline" 
-                    className="w-full" 
-                    onClick={() => setIsDeleteDialogOpen(false)}
-                    disabled={isDeleting}
-                >
-                    إلغاء التراجع
-                </Button>
-                <Button 
-                    variant="destructive" 
-                    className="w-full" 
-                    onClick={handleDeleteAccount}
-                    disabled={isDeleting || !deletePassword.trim()}
-                >
+                <Button variant="outline" className="w-full" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>إلغاء</Button>
+                <Button variant="destructive" className="w-full" onClick={handleDeleteAccount} disabled={isDeleting || !deletePassword.trim()}>
                     {isDeleting ? <Loader2 className="animate-spin me-2 h-4 w-4" /> : <Trash2 className="me-2 h-4 w-4" />}
                     حذف الحساب نهائياً
                 </Button>
@@ -423,11 +366,7 @@ export default function ProfilePage() {
         </DialogContent>
     </Dialog>
 
-    <CoinManagementDialog 
-        isOpen={isCoinManagementOpen} 
-        onOpenChange={setIsCoinManagementOpen} 
-        user={user}
-    />
+    <CoinManagementDialog isOpen={isCoinManagementOpen} onOpenChange={setIsCoinManagementOpen} user={user} />
     </>
   );
 }
