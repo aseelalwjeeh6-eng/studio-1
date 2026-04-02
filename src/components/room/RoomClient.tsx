@@ -1,17 +1,16 @@
-
 'use client';
 
-import { useEffect, useState, useMemo, FormEvent, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { database } from '@/lib/firebase';
-import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, Unsubscribe, remove, push } from 'firebase/database';
+import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, push, remove } from 'firebase/database';
 import useUserSession from '@/hooks/use-user-session';
 import Player from './Player';
 import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, History, X, Youtube, LogOut, Video, Film, Users, Send, Play, Clapperboard, Plus, ListMusic, Wallpaper, Check, Lock, Unlock, Settings, Edit, Clock, EyeOff, Copy, Gift } from 'lucide-react';
+import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -20,18 +19,13 @@ import Image from 'next/image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '../ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
+import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import VideoConference from './VideoConference';
-import { AppUser, getFriends, sendRoomInvitation, getFriendRequests, areFriends, createRoom, sendGift } from '@/lib/firebase-service';
-import YouTube, { YouTubePlayer } from 'react-youtube';
+import { getFriends, sendRoomInvitation, getFriendRequests, sendGift } from '@/lib/firebase-service';
+import YouTube from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
-import { Label } from '../ui/label';
-import { Badge } from '../ui/badge';
-import { ScrollArea } from '../ui/scroll-area';
-import { Switch } from '../ui/switch';
-import { useIsMobile } from '@/hooks/use-mobile';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
@@ -129,7 +123,7 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                                 <Video className="me-2" /> مكالمة فيديو
                             </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem onClick={onLeaveRoom} className="text-destructive">
+                        <DropdownMenuMenuItem onClick={onLeaveRoom} className="text-destructive">
                             <LogOut className="me-2" /> مغادرة الغرفة
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -167,49 +161,28 @@ const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwi
                 </Avatar>
             </div>
         </header>
-    )
-}
+    );
+};
 
-const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: NonNullable<ReturnType<typeof useUserSession>['user']>, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
+const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPassword, isPasswordChecked }: { roomId: string, user: any, sendSystemMessage: (text: string) => void, roomPassword?: string, onCorrectPassword: () => void, isPasswordChecked: boolean; }) => {
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
-  
-  // High-precision clock sync
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
 
-  const [roomBasicInfo, setRoomBasicInfo] = useState(() => getCachedState(roomId, 'roomBasicInfo', { 
-    name: '', 
-    hostName: '', 
-    moderators: [] as string[], 
-    isPrivate: false, 
-    background: null as string | null 
-  }));
-
-  const [videoState, setVideoState] = useState(() => getCachedState(roomId, 'videoState', { 
-    url: '', 
-    details: null as YouTubeVideo | null, 
-    playlist: [] as PlaylistItem[], 
-    mode: false 
-  }));
-
-  const [membersState, setMembersState] = useState(() => getCachedState(roomId, 'membersState', { 
-    all: [] as Member[], 
-    seated: [] as SeatedMember[] 
-  }));
-
+  const [roomBasicInfo, setRoomBasicInfo] = useState(() => getCachedState(roomId, 'roomBasicInfo', { name: '', hostName: '', moderators: [] as string[], isPrivate: false, background: null as string | null }));
+  const [videoState, setVideoState] = useState(() => getCachedState(roomId, 'videoState', { url: '', details: null as YouTubeVideo | null, playlist: [] as PlaylistItem[], mode: false }));
+  const [membersState, setMembersState] = useState(() => getCachedState(roomId, 'membersState', { all: [] as Member[], seated: [] as SeatedMember[] }));
   const [playerState, setPlayerState] = useState<PlayerState | null>(() => getCachedState(roomId, 'playerState', null));
   
-  const [auth, setAuth] = useState({ isAuthenticating: false, pinInput: '', pinError: false, isFullyAuthed: false });
+  const [auth, setAuth] = useState({ pinInput: '', pinError: false, isFullyAuthed: false });
   const [chatState, setChatState] = useState({ isSending: false, replyingTo: null as Message | null });
   const [dialogs, setDialogs] = useState({ search: false, playlist: false, background: false, settings: false, invite: false, giftShop: false });
-  
-  const [search, setSearch] = useState({ query: '', urlInput: '', results: [] as YouTubeVideo[], isSearching: false, error: null as string | null, history: [] as string[] });
-  const [friendData, setFriendData] = useState({ friends: [] as AppUser[], requests: [] as AppUser[], invited: new Set<string>() });
+  const [search, setSearch] = useState({ query: '', results: [] as YouTubeVideo[], isSearching: false, error: null as string | null });
+  const [friendData, setFriendData] = useState({ friends: [] as any[], invited: new Set<string>() });
   const [preview, setPreview] = useState({ video: null as YouTubeVideo | null, recentlyAdded: new Set<string>() });
-  
   const [giftData, setGiftData] = useState({ target: '', stream: [] as any[] });
-  const previewPlayerRef = useRef<YouTubePlayer | null>(null);
-
+  
+  const previewPlayerRef = useRef<any>(null);
   const { room: livekitRoom } = useLiveKitRoom();
   const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
@@ -232,12 +205,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
   useEffect(() => { if (isPasswordChecked) setAuth(prev => ({ ...prev, isFullyAuthed: !roomPassword })); }, [isPasswordChecked, roomPassword]);
 
-  // Sync clock with Firebase globally
   useEffect(() => {
     const offsetRef = ref(database, '.info/serverTimeOffset');
-    const unsub = onValue(offsetRef, (snap) => {
-      setServerTimeOffset(snap.val() || 0);
-    });
+    const unsub = onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
     return () => unsub();
   }, []);
 
@@ -246,8 +216,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     const fetchFriends = async () => {
         if (!user) return;
         try {
-            const [friendsList, requestsList] = await Promise.all([getFriends(user.name), getFriendRequests(user.name)]);
-            if (mounted) setFriendData(prev => ({ ...prev, friends: friendsList, requests: requestsList }));
+            const friendsList = await getFriends(user.name);
+            if (mounted) setFriendData(prev => ({ ...prev, friends: friendsList }));
         } catch (e) {}
     };
     fetchFriends();
@@ -271,24 +241,16 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     if (!user) { router.push('/lobby'); return; }
     try {
         goOffline(database);
-        const roomRef = ref(database, `rooms/${roomId}`);
-        const membersRef = ref(database, `rooms/${roomId}/members`);
         const userSeat = membersState.seated.find(m => m.name === user.name);
         if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
-        const membersSnapshot = await get(membersRef);
-        if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) {
-            // Keep room alive even if empty, until explicitly deleted or logic cleanup
-            await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-        } else {
-            await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-        }
+        await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
     } catch (e) {}
     router.push('/lobby');
   }, [user, roomId, membersState.seated, router]);
   
   useEffect(() => {
     let isMounted = true;
-    const unsubs: (() => void)[] = [];
+    const unsubscribers: (() => void)[] = [];
     
     const setupListeners = async () => {
         const roomRef = ref(database, `rooms/${roomId}`);
@@ -296,160 +258,81 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         if (!isMounted || !roomSnapshot.exists()) { if(isMounted) router.push('/lobby'); return; }
         
         const initialRoomData = roomSnapshot.val();
-        setVideoState(prev => {
-            const next = { ...prev, mode: initialRoomData.videoMode || false };
-            setCachedState(roomId, 'videoState', next);
-            return next;
-        });
+        setVideoState(prev => ({ ...prev, mode: initialRoomData.videoMode || false }));
 
-        const safeOnValue = (dbRef: any, callback: (snap: any) => void) => {
-            const unsub = onValue(dbRef, (snap) => { if(isMounted) callback(snap); });
-            unsubs.push(unsub);
+        const subscribe = (path: string, callback: (snap: any) => void) => {
+            const unsub = onValue(ref(database, path), (snap) => { if(isMounted) callback(snap); });
+            unsubscribers.push(unsub);
         };
 
-        safeOnValue(ref(database, `rooms/${roomId}/members`), snap => {
+        subscribe(`rooms/${roomId}/members`, snap => {
             const val = snap.exists() ? Object.values(snap.val()) as Member[] : [];
-            setMembersState(prev => {
-                if (JSON.stringify(prev.all) === JSON.stringify(val)) return prev;
-                const next = { ...prev, all: val };
-                setCachedState(roomId, 'membersState', next);
-                return next;
-            });
+            setMembersState(prev => ({ ...prev, all: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => {
+        subscribe(`rooms/${roomId}/seatedMembers`, snap => {
             const val = snap.exists() ? Object.values(snap.val()) as SeatedMember[] : [];
-            setMembersState(prev => {
-                if (JSON.stringify(prev.seated) === JSON.stringify(val)) return prev;
-                const next = { ...prev, seated: val };
-                setCachedState(roomId, 'membersState', next);
-                return next;
-            });
+            setMembersState(prev => ({ ...prev, seated: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/videoUrl`), snap => {
+        subscribe(`rooms/${roomId}/videoUrl`, snap => {
             const val = snap.val() || '';
-            setVideoState(prev => {
-                if (prev.url === val) return prev;
-                const next = { ...prev, url: val };
-                setCachedState(roomId, 'videoState', next);
-                return next;
-            });
+            setVideoState(prev => ({ ...prev, url: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/currentVideoDetails`), snap => {
+        subscribe(`rooms/${roomId}/currentVideoDetails`, snap => {
             const val = snap.val() || null;
-            setVideoState(prev => {
-                if (JSON.stringify(prev.details) === JSON.stringify(val)) return prev;
-                const next = { ...prev, details: val };
-                setCachedState(roomId, 'videoState', next);
-                return next;
-            });
+            setVideoState(prev => ({ ...prev, details: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/name`), snap => {
+        subscribe(`rooms/${roomId}/name`, snap => {
             const val = snap.val() || '';
-            setRoomBasicInfo(prev => {
-                if (prev.name === val) return prev;
-                const next = { ...prev, name: val };
-                setCachedState(roomId, 'roomBasicInfo', next);
-                return next;
-            });
+            setRoomBasicInfo(prev => ({ ...prev, name: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/isPrivate`), snap => {
-            const val = snap.val() || false;
-            setRoomBasicInfo(prev => {
-                if (prev.isPrivate === val) return prev;
-                const next = { ...prev, isPrivate: val };
-                setCachedState(roomId, 'roomBasicInfo', next);
-                return next;
-            });
-        });
-
-        safeOnValue(ref(database, `rooms/${roomId}/backgroundUrl`), snap => {
+        subscribe(`rooms/${roomId}/backgroundUrl`, snap => {
             const val = snap.val() || null;
-            setRoomBasicInfo(prev => {
-                if (prev.background === val) return prev;
-                const next = { ...prev, background: val };
-                setCachedState(roomId, 'roomBasicInfo', next);
-                return next;
-            });
+            setRoomBasicInfo(prev => ({ ...prev, background: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/playlist`), snap => {
+        subscribe(`rooms/${roomId}/playlist`, snap => {
             const val = snap.exists() ? Object.values(snap.val()) as PlaylistItem[] : [];
-            setVideoState(prev => {
-                if (JSON.stringify(prev.playlist) === JSON.stringify(val)) return prev;
-                const next = { ...prev, playlist: val };
-                setCachedState(roomId, 'videoState', next);
-                return next;
-            });
+            setVideoState(prev => ({ ...prev, playlist: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/playerState`), snap => {
+        subscribe(`rooms/${roomId}/playerState`, snap => {
             const val = snap.val();
-            if (val) {
-                setPlayerState(prev => {
-                    if (JSON.stringify(prev) === JSON.stringify(val)) return prev;
-                    setCachedState(roomId, 'playerState', val);
-                    return val;
-                });
-            }
+            if (val) setPlayerState(val);
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/host`), snap => {
+        subscribe(`rooms/${roomId}/host`, snap => {
             const val = snap.val() || '';
-            setRoomBasicInfo(prev => {
-                if (prev.hostName === val) return prev;
-                const next = { ...prev, hostName: val };
-                setCachedState(roomId, 'roomBasicInfo', next);
-                return next;
-            });
+            setRoomBasicInfo(prev => ({ ...prev, hostName: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/moderators`), snap => {
+        subscribe(`rooms/${roomId}/moderators`, snap => {
             const val = snap.val() || [];
-            setRoomBasicInfo(prev => {
-                if (JSON.stringify(prev.moderators) === JSON.stringify(val)) return prev;
-                const next = { ...prev, moderators: val };
-                setCachedState(roomId, 'roomBasicInfo', next);
-                return next;
-            });
+            setRoomBasicInfo(prev => ({ ...prev, moderators: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/videoMode`), snap => {
+        subscribe(`rooms/${roomId}/videoMode`, snap => {
             const val = snap.val() || false;
-            setVideoState(prev => {
-                if (prev.mode === val) return prev;
-                const next = { ...prev, mode: val };
-                setCachedState(roomId, 'videoState', next);
-                return next;
-            });
+            setVideoState(prev => ({ ...prev, mode: val }));
         });
 
-        safeOnValue(ref(database, `rooms/${roomId}/giftStream`), snap => {
+        subscribe(`rooms/${roomId}/giftStream`, snap => {
             if (snap.exists()) {
                 const allGifts = Object.values(snap.val());
-                setGiftData(prev => {
-                    if (JSON.stringify(prev.stream) === JSON.stringify(allGifts)) return prev;
-                    return { ...prev, stream: allGifts };
-                });
+                setGiftData(prev => ({ ...prev, stream: allGifts }));
             }
         });
     };
     setupListeners();
-    return () => { isMounted = false; unsubs.forEach(unsub => unsub()); };
+    return () => { 
+        isMounted = false; 
+        unsubscribers.forEach(unsub => unsub()); 
+    };
   }, [roomId, router]);
-
-  useEffect(() => {
-      if(typeof window !== 'undefined') {
-          try {
-              const stored = localStorage.getItem('youtubeSearchHistory');
-              if (stored) setSearch(prev => ({ ...prev, history: JSON.parse(stored) }));
-          } catch (e) {}
-      }
-  }, []);
 
   const handleTakeSeat = useCallback((seatId: number) => {
       const seatRef = ref(database, `rooms/${roomId}/seatedMembers/${seatId}`);
@@ -486,23 +369,17 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       setSearch(prev => ({ ...prev, isSearching: true, error: null, results: [] }));
       try {
         const results = await searchYoutube({ query: queryStr.trim() });
-        setSearch(prev => {
-            const newHistory = [queryStr.trim(), ...prev.history.filter(h => h.toLowerCase() !== queryStr.trim().toLowerCase())].slice(0, 10);
-            try { localStorage.setItem('youtubeSearchHistory', JSON.stringify(newHistory)); } catch (e) {}
-            return { ...prev, results: results.items, history: newHistory, isSearching: false };
-        });
+        setSearch(prev => ({ ...prev, results: results.items, isSearching: false }));
       } catch (e: any) {
           setSearch(prev => ({ ...prev, isSearching: false, error: e.message || "Search failed" }));
       }
   }, [canControl]);
 
-  // Purely persistence-based playback updates
   const onSetVideo = useCallback((videoIdentifier: string, startTime = 0, videoDetails?: YouTubeVideo) => {
     if (canControl) {
       const updates: any = {};
       updates[`/rooms/${roomId}/videoUrl`] = videoIdentifier;
       updates[`/rooms/${roomId}/currentVideoDetails`] = videoDetails || null;
-      // The timestamp is the reference point for the whole room
       updates[`/rooms/${roomId}/playerState`] = { 
         isPlaying: !!videoIdentifier, 
         seekTime: startTime, 
@@ -519,39 +396,22 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
         const c = curr || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
         const updated = { ...c, ...newState };
-        // Any change in playback or seek resets the reference timestamp
         const shouldStamp = (newState.isPlaying !== undefined && newState.isPlaying !== c.isPlaying) || newState.seekTime !== undefined;
         return shouldStamp ? { ...updated, timestamp: serverTimestamp() } : updated;
     }).catch(() => {});
   }, [canControl, roomId]);
-
-  const handleAddToPlaylistFromSearch = useCallback((video: YouTubeVideo) => {
-      try {
-          const newItem: PlaylistItem = { id: video.id.videoId, videoId: video.id.videoId, title: video.snippet.title, thumbnail: video.snippet.high.url };
-          set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem);
-          setPreview(prev => ({ ...prev, recentlyAdded: new Set(prev.recentlyAdded).add(video.id.videoId) }));
-          setTimeout(() => setPreview(prev => { const n = new Set(prev.recentlyAdded); n.delete(video.id.videoId); return { ...prev, recentlyAdded: n }; }), 2000);
-      } catch (e) {}
-  }, [roomId]);
-  
-  const handlePlayFromPlaylist = useCallback(async (vId: string) => {
-    try {
-        const results = await searchYoutube({ query: vId });
-        const details = results.items.find(item => item.id.videoId === vId);
-        onSetVideo(vId, 0, details);
-    } catch(e) { onSetVideo(vId); }
-    setDialogs(prev => ({ ...prev, playlist: false }));
-  }, [onSetVideo]);
 
   const handleVideoEnded = useCallback(() => {
     if (!canControl) return;
     try {
         const currentVidId = videoState.url.match(/^[a-zA-Z0-9_-]{11}$/) ? videoState.url : (new URL(videoState.url).searchParams.get('v'));
         const idx = videoState.playlist.findIndex(item => item.videoId === currentVidId);
-        if (idx !== -1 && idx + 1 < videoState.playlist.length) handlePlayFromPlaylist(videoState.playlist[idx + 1].videoId);
-        else onSetVideo('');
+        if (idx !== -1 && idx + 1 < videoState.playlist.length) {
+            const next = videoState.playlist[idx + 1];
+            onSetVideo(next.videoId);
+        } else onSetVideo('');
     } catch (e) { onSetVideo(''); }
-  }, [canControl, videoState.url, videoState.playlist, handlePlayFromPlaylist, onSetVideo]);
+  }, [canControl, videoState.url, videoState.playlist, onSetVideo]);
 
   if (!auth.isFullyAuthed) {
     return (
@@ -587,18 +447,14 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                       <>
                           <div className="flex-shrink-0">
                             <Player 
-                                videoUrl={videoState.url} 
-                                onSetVideo={onSetVideo} 
-                                canControl={canControl} 
+                                videoUrl={videoState.url} onSetVideo={onSetVideo} canControl={canControl} 
                                 onSearchClick={() => setDialogs(p => ({...p, search: true}))} 
-                                playerState={playerState} 
-                                onPlayerStateChange={handlePlayerStateChange} 
-                                onVideoEnded={handleVideoEnded} 
-                                videoDetails={videoState.details}
+                                playerState={playerState} onPlayerStateChange={handlePlayerStateChange} 
+                                onVideoEnded={handleVideoEnded} videoDetails={videoState.details}
                                 serverTimeOffset={serverTimeOffset}
                             />
                           </div>
-                          <div className="flex-shrink-0"><Seats seatedMembers={membersState.seated} hostName={roomBasicInfo.hostName} moderators={roomBasicInfo.moderators} onTakeSeat={handleTakeSeat} onLeaveSeat={handleLeaveSeat} currentUser={user} isHost={isHost} onKickUser={() => {}} onPromote={() => {}} onDemote={() => {}} onTransferHost={() => {}} room={livekitRoom as any} currentUserFriends={friendData.friends} currentUserRequests={friendData.requests} onSendGift={(t) => { setGiftData(p => ({...p, target: t})); setDialogs(p => ({...p, giftShop: true})); }} /></div>
+                          <div className="flex-shrink-0"><Seats seatedMembers={membersState.seated} hostName={roomBasicInfo.hostName} moderators={roomBasicInfo.moderators} onTakeSeat={handleTakeSeat} onLeaveSeat={handleLeaveSeat} currentUser={user} isHost={isHost} onKickUser={() => {}} onPromote={() => {}} onDemote={() => {}} onTransferHost={() => {}} room={livekitRoom as any} currentUserFriends={friendData.friends} currentUserRequests={[]} onSendGift={(t) => { setGiftData(p => ({...p, target: t})); setDialogs(p => ({...p, giftShop: true})); }} /></div>
                           <div className="flex-shrink-0 mt-2 md:mt-4"><ViewerInfo members={viewers} /></div>
                           <div className="flex-grow flex flex-col bg-transparent rounded-t-lg min-h-0 mt-2 md:mt-4"><ChatHeader isHost={isHost} roomId={roomId} /><div className="flex-grow min-h-0 pb-20"><ChatMessages roomId={roomId} user={user} onReply={(m) => setChatState(p => ({...p, replyingTo: m}))} /></div></div>
                       </>
@@ -610,9 +466,9 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     
     <GiftShopDialog isOpen={dialogs.giftShop} onOpenChange={(o) => setDialogs(p => ({...p, giftShop: o}))} recipientName={giftData.target} onSendGift={async (r, g) => { try { await sendGift(user.name, r, g, roomId); const gift = Gifts.find(x => x.id === g); if(gift) sendSystemMessage(`🎁 ${user.name} أرسل ${gift.name} إلى ${r}`); } catch(e) {} }} seatedMembers={membersState.seated} />
     <Dialog open={dialogs.invite} onOpenChange={(o) => setDialogs(p => ({...p, invite: o}))}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>دعوة أصدقاء</DialogTitle></DialogHeader><div className="space-y-3 max-h-80 overflow-y-auto mt-4">{friendData.friends.length > 0 ? friendData.friends.map(f => <div key={f.name} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30"><div className="flex items-center gap-3"><Avatar className="h-10 w-10"><AvatarImage src={PlaceHolderImages.find(p => p.id === f.avatarId)?.imageUrl} /></Avatar><span className="font-semibold">{f.name}</span></div><Button size="sm" onClick={async () => { try { await sendRoomInvitation(user.name, f.name, roomId, roomBasicInfo.name); setFriendData(p => ({...p, invited: new Set(p.invited).add(f.name)})); } catch(e) {} }} disabled={friendData.invited.has(f.name)}>{friendData.invited.has(f.name) ? "تمت الدعوة" : "دعوة"}</Button></div>) : <p className="text-center text-muted-foreground py-4">لا يوجد أصدقاء.</p>}</div></DialogContent></Dialog>
-    <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={handlePlayFromPlaylist} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({...p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={dialogs.search} onOpenChange={(o) => setDialogs(p => ({...p, search: o}))}><DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0"><DialogHeader className="p-6 pb-4 border-b"><DialogTitle>البحث عن فيديو</DialogTitle></DialogHeader><div className="p-6 flex gap-4"><form onSubmit={(e) => { e.preventDefault(); performSearch(search.query); }} className="flex-1 flex gap-2"><Input placeholder="يوتيوب..." value={search.query} onChange={(e) => setSearch(p => ({...p, query: e.target.value}))} className="bg-input" /><Button type="submit">{search.isSearching ? <Loader2 className="animate-spin" /> : <Search />}</Button></form></div><div className="flex-grow overflow-y-auto px-6 pb-6">{search.results.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{search.results.map(v => <div key={v.id.videoId} className="group cursor-pointer" onClick={() => setPreview(p => ({...p, video: v}))}><div className="relative aspect-video rounded-lg overflow-hidden mb-2"><Image src={v.snippet.thumbnails.high.url} alt="V" fill className="object-cover" /></div><h3 className="font-semibold text-sm line-clamp-2">{v.snippet.title}</h3><Button onClick={(e) => { e.stopPropagation(); handleAddToPlaylistFromSearch(v); }} variant="secondary" size="sm" className="w-full mt-2">{preview.recentlyAdded.has(v.id.videoId) ? "تمت الإضافة" : "إضافة للقائمة"}</Button></div>)}</div>}</div></DialogContent></Dialog>
-    {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => handleAddToPlaylistFromSearch(preview.video!)} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...p, video: null})); setDialogs(p => ({...p, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
+    <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={(v) => onSetVideo(v)} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({...p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialogs.search} onOpenChange={(o) => setDialogs(p => ({...p, search: o}))}><DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0"><DialogHeader className="p-6 pb-4 border-b"><DialogTitle>البحث عن فيديو</DialogTitle></DialogHeader><div className="p-6 flex gap-4"><form onSubmit={(e) => { e.preventDefault(); performSearch(search.query); }} className="flex-1 flex gap-2"><Input placeholder="يوتيوب..." value={search.query} onChange={(e) => setSearch(p => ({...p, query: e.target.value}))} className="bg-input" /><Button type="submit">{search.isSearching ? <Loader2 className="animate-spin" /> : <Search />}</Button></form></div><div className="flex-grow overflow-y-auto px-6 pb-6">{search.results.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{search.results.map(v => <div key={v.id.videoId} className="group cursor-pointer" onClick={() => setPreview(p => ({...p, video: v}))}><div className="relative aspect-video rounded-lg overflow-hidden mb-2"><Image src={v.snippet.thumbnails.high.url} alt="V" fill className="object-cover" /></div><h3 className="font-semibold text-sm line-clamp-2">{v.snippet.title}</h3><Button onClick={(e) => { e.stopPropagation(); try { const newItem: PlaylistItem = { id: v.id.videoId, videoId: v.id.videoId, title: v.snippet.title, thumbnail: v.snippet.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(prev => ({ ...prev, recentlyAdded: new Set(prev.recentlyAdded).add(v.id.videoId) })); setTimeout(() => setPreview(prev => { const n = new Set(prev.recentlyAdded); n.delete(v.id.videoId); return { ...prev, recentlyAdded: n }; }), 2000); } catch(e) {} }} variant="secondary" size="sm" className="w-full mt-2">{preview.recentlyAdded.has(v.id.videoId) ? "تمت الإضافة" : "إضافة للقائمة"}</Button></div>)}</div>}</div></DialogContent></Dialog>
+    {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => { try { const newItem: PlaylistItem = { id: preview.video!.id.videoId, videoId: preview.video!.id.videoId, title: preview.video!.snippet.title, thumbnail: preview.video!.snippet.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(p => ({ ...p, video: null })); } catch(e) {} }} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...p, video: null})); setDialogs(p => ({...p, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
 </div>
   );
 }
@@ -637,10 +493,7 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => {
             const val = snap.exists() ? Object.values(snap.val()) : [];
             const isSeated = val.some((m: any) => m.name === user.name);
-            if (isMounted) setRoomData(p => {
-                if (p.seated === isSeated) return p;
-                return { ...p, seated: isSeated };
-            });
+            if (isMounted) setRoomData(p => (p.seated === isSeated ? p : { ...p, seated: isSeated }));
         }),
         onValue(ref(database, `rooms/${roomId}/videoMode`), snap => {
             const val = snap.val() || false;
@@ -668,14 +521,12 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         const data = snap.val();
         setRoomData(p => ({ ...p, password: data.password, checked: true }));
         
-        const connectedRef = ref(database, '.info/connected');
-        connectedUnsub = onValue(connectedRef, s => {
+        connectedUnsub = onValue(ref(database, '.info/connected'), s => {
           if (s.val() === true && active) {
             goOnline(database);
             const mRef = ref(database, `rooms/${roomId}/members/${user.name}`);
             set(mRef, { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() });
             onDisconnect(mRef).remove();
-            
             const pRef = ref(database, `presence/${user.name}`);
             set(pRef, { status: 'online', lastChanged: serverTimestamp() });
             onDisconnect(pRef).set({ status: 'offline', lastChanged: serverTimestamp() });
@@ -686,27 +537,16 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
         if (!res.ok) throw new Error('Failed to fetch token');
         const tokenData = await res.json();
         if (active) setRoomData(p => ({ ...p, token: tokenData.token }));
-      } catch (e) { 
-          if (active) router.push('/lobby');
-      }
+      } catch (e) { if (active) router.push('/lobby'); }
     };
     setup();
-    return () => { 
-        active = false; 
-        if (connectedUnsub) connectedUnsub();
-    };
+    return () => { active = false; if (connectedUnsub) connectedUnsub(); };
   }, [isLoaded, user, roomId, router]);
 
   const sendSystemMessage = useCallback(async (text: string) => {
     try {
         const newMsgRef = push(ref(database, `rooms/${roomId}/chat`));
-        await set(newMsgRef, {
-            id: newMsgRef.key!,
-            sender: 'System',
-            text,
-            timestamp: serverTimestamp(),
-            isSystemMessage: true
-        });
+        await set(newMsgRef, { id: newMsgRef.key!, sender: 'System', text, timestamp: serverTimestamp(), isSystemMessage: true });
     } catch (e) {}
   }, [roomId]);
 

@@ -70,6 +70,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const isBufferingRef = useRef(false); 
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Protect against sync loops: ignore external sync for 3s after local action
+  const lastLocalActionTime = useRef<number>(0);
+
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
@@ -83,7 +86,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
-  // --- Core Utility & Handlers ---
+  // --- Core Utility & Handlers (Defined first to avoid lexical errors) ---
 
   const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
@@ -101,6 +104,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return date.toISOString().substr(hasHours ? 11 : 14, hasHours ? 8 : 5);
   }, []);
 
+  const handlePlayerStateChangeWithGuard = useCallback((newState: Partial<PlayerState>) => {
+      lastLocalActionTime.current = Date.now();
+      onPlayerStateChange(newState);
+  }, [onPlayerStateChange]);
+
   const seek = useCallback((amount: number) => {
     if (!canControl || !isPlayerReady.current || !duration) return;
     let currentTime = 0;
@@ -116,9 +124,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         triggerFeedback(amount > 0 ? 'forward' : 'backward');
     } catch (e) { isSeekingRef.current = false; return; }
     setProgress(newTime);
-    onPlayerStateChange({ seekTime: newTime });
+    handlePlayerStateChangeWithGuard({ seekTime: newTime });
     setTimeout(() => { isSeekingRef.current = false; }, 500);
-  }, [canControl, duration, onPlayerStateChange, triggerFeedback]);
+  }, [canControl, duration, handlePlayerStateChangeWithGuard, triggerFeedback]);
 
   const togglePlay = useCallback(() => {
     if (!canControl || !isPlayerReady.current) return;
@@ -178,12 +186,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true); 
           else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
       } catch(e) {}
-      onPlayerStateChange({ seekTime: newTime });
+      handlePlayerStateChangeWithGuard({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
-  }, [canControl, onPlayerStateChange]);
+  }, [canControl, handlePlayerStateChangeWithGuard]);
 
   const syncPlayerState = useCallback(() => {
+    // Ignore external sync if user just performed a local action (prevents bouncing to zero)
+    if (Date.now() - lastLocalActionTime.current < 3000) return;
+
     if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current || isBufferingRef.current) return;
+    
     let currentPlayerTime = 0;
     let localPlayer: any = null;
     try {
@@ -199,19 +211,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         currentPlayerTime = localPlayer.currentTime;
       } else return;
     } catch (e) { return; }
+
     if (!duration || duration === 0) {
         try {
             if (urlType === 'youtube' && typeof localPlayer.getDuration === 'function') setDuration(localPlayer.getDuration());
             else if (urlType === 'direct') setDuration(localPlayer.duration);
         } catch(e) {}
     }
+
     const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
+    
     if (duration > 0 && serverTime > duration + 5) { if (canControl) onVideoEnded(); return; }
+    
     const timeDifference = serverTime - currentPlayerTime;
     const absDifference = Math.abs(timeDifference);
+
     try {
       isInternalUpdate.current = true;
-      if (absDifference > 2.5) { 
+      // Increased threshold during initial seconds to prevent jitter
+      const syncThreshold = (currentPlayerTime < 5) ? 3.5 : 2.5;
+
+      if (absDifference > syncThreshold) { 
         if (urlType === 'youtube' && typeof localPlayer.seekTo === 'function') {
             localPlayer.seekTo(serverTime, true);
             if (typeof localPlayer.setPlaybackRate === 'function') localPlayer.setPlaybackRate(1);
@@ -220,7 +240,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             localPlayer.playbackRate = 1;
         }
       } 
-      else if (absDifference > 0.4) { 
+      else if (absDifference > 0.5) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (urlType === 'youtube' && typeof localPlayer.setPlaybackRate === 'function') {
             if (localPlayer.getPlaybackRate() !== playbackRate) localPlayer.setPlaybackRate(playbackRate);
@@ -235,6 +255,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             if (localPlayer.playbackRate !== 1) localPlayer.playbackRate = 1;
         }
       }
+
       if (urlType === 'youtube') {
         const ytState = localPlayer.getPlayerState();
         if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { if (typeof localPlayer.playVideo === 'function') localPlayer.playVideo(); }
@@ -295,7 +316,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       try {
           const artwork = [];
           if (videoDetails.snippet.thumbnails.high) artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
-          navigator.mediaSession.metadata = new MediaMetadata({ title: videoDetails.snippet.title, artist: videoDetails.snippet.channelTitle, album: 'اصيل سينما', artwork: artwork });
+          navigator.mediaSession.metadata = new MediaMetadata({ title: videoDetails.snippet.title, artist: videoDetails.snippet.channelTitle, artwork: artwork });
           navigator.mediaSession.setActionHandler('play', canControl ? togglePlay : null);
           navigator.mediaSession.setActionHandler('pause', canControl ? togglePlay : null);
           navigator.mediaSession.setActionHandler('seekbackward', canControl ? () => seek(-10) : null);
@@ -354,10 +375,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (typeof ytPlayerRef.current.getCurrentTime !== 'function') return;
         const currentTime = ytPlayerRef.current.getCurrentTime();
         isBufferingRef.current = (event.data === 3);
-        if (event.data === 1) { if (!playerState?.isPlaying) onPlayerStateChange({ isPlaying: true, seekTime: currentTime }); }
-        else if (event.data === 2) { if (playerState?.isPlaying) onPlayerStateChange({ isPlaying: false, seekTime: currentTime }); }
+        if (event.data === 1) { if (!playerState?.isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: true, seekTime: currentTime }); }
+        else if (event.data === 2) { if (playerState?.isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: false, seekTime: currentTime }); }
     } catch(e) {}
-  }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
+  }, [canControl, playerState?.isPlaying, handlePlayerStateChangeWithGuard]);
 
   const onHtmlReady = useCallback((e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!htmlPlayerRef.current) return;
@@ -369,8 +390,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onHtmlStateChange = useCallback(() => {
       if (!canControl || isSeekingRef.current || !htmlPlayerRef.current || isInternalUpdate.current) return;
       const isPlaying = !htmlPlayerRef.current.paused;
-      if (playerState?.isPlaying !== isPlaying) onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
-  }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
+      if (playerState?.isPlaying !== isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
+  }, [canControl, playerState?.isPlaying, handlePlayerStateChangeWithGuard]);
 
   const onMouseMove = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
