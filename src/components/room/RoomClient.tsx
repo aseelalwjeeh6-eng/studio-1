@@ -35,20 +35,13 @@ import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/comp
 import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
 import { Gifts } from '@/lib/gifts';
+import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - ROOM ARCHITECTURE
- * --------------------------------------
- * The RoomClient manages the lifecycle of a virtual cinema room.
- * Key Mechanisms:
- * 1. Independent Persistence: Room is a standalone entity in Firebase.
- * 2. Heartbeat: Ensuring the 'Reference Time' advances even if the host is fluctuating.
- * 3. Reactive State: All UI elements (Seats, Chat, Player) are synchronized via Firebase Realtime listeners.
- * 
- * Safety Checkpoints:
- * - Ghost Room Cleanup: Handled in Lobby and on last user exit.
- * - Listener Management: Use of Unsubscribe array to prevent memory leaks.
- * - Concurrency: Use of runTransaction for seat allocation and player state updates.
+ * TECHNICAL ANALYSIS - ROOM ARCHITECTURE (PHASE 2: CACHING LAYER)
+ * -------------------------------------------------------------
+ * Implementation of a non-blocking cache layer using getCachedState and setCachedState.
+ * Goal: Instant UI responsiveness and resilience to network drops.
  */
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
@@ -185,11 +178,28 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const router = useRouter();
   const chatInputRef = useRef<HTMLInputElement>(null);
   
-  // Logical state grouping
-  const [roomBasicInfo, setRoomBasicInfo] = useState({ name: '', hostName: '', moderators: [] as string[], isPrivate: false, background: null as string | null });
-  const [videoState, setVideoState] = useState({ url: '', details: null as YouTubeVideo | null, playlist: [] as PlaylistItem[], mode: false });
-  const [membersState, setMembersState] = useState({ all: [] as Member[], seated: [] as SeatedMember[] });
-  const [playerState, setPlayerState] = useState<PlayerState | null>(null);
+  // Logical state grouping with caching layer
+  const [roomBasicInfo, setRoomBasicInfo] = useState(() => getCachedState(roomId, 'roomBasicInfo', { 
+    name: '', 
+    hostName: '', 
+    moderators: [] as string[], 
+    isPrivate: false, 
+    background: null as string | null 
+  }));
+
+  const [videoState, setVideoState] = useState(() => getCachedState(roomId, 'videoState', { 
+    url: '', 
+    details: null as YouTubeVideo | null, 
+    playlist: [] as PlaylistItem[], 
+    mode: false 
+  }));
+
+  const [membersState, setMembersState] = useState(() => getCachedState(roomId, 'membersState', { 
+    all: [] as Member[], 
+    seated: [] as SeatedMember[] 
+  }));
+
+  const [playerState, setPlayerState] = useState<PlayerState | null>(() => getCachedState(roomId, 'playerState', null));
   
   const [auth, setAuth] = useState({ isAuthenticating: false, pinInput: '', pinError: false, isFullyAuthed: false });
   const [chatState, setChatState] = useState({ isSending: false, replyingTo: null as Message | null });
@@ -285,20 +295,117 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         if (!isMounted || !roomSnapshot.exists()) { if(isMounted) router.push('/lobby'); return; }
         
         const initialRoomData = roomSnapshot.val();
-        setVideoState(prev => ({ ...prev, mode: initialRoomData.videoMode || false }));
+        setVideoState(prev => {
+            const next = { ...prev, mode: initialRoomData.videoMode || false };
+            setCachedState(roomId, 'videoState', next);
+            return next;
+        });
 
-        listeners.push(onValue(ref(database, `rooms/${roomId}/members`), snap => setMembersState(prev => ({ ...prev, all: snap.exists() ? Object.values(snap.val()) : [] }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => setMembersState(prev => ({ ...prev, seated: snap.exists() ? Object.values(snap.val()) as SeatedMember[] : [] }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/videoUrl`), snap => setVideoState(prev => ({ ...prev, url: snap.val() || '' }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/currentVideoDetails`), snap => setVideoState(prev => ({ ...prev, details: snap.val() || null }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/name`), snap => setRoomBasicInfo(prev => ({ ...prev, name: snap.val() || '' }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/isPrivate`), snap => setRoomBasicInfo(prev => ({ ...prev, isPrivate: snap.val() || false }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/backgroundUrl`), snap => setRoomBasicInfo(prev => ({ ...prev, background: snap.val() || null }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/playlist`), snap => setVideoState(prev => ({ ...prev, playlist: snap.exists() ? Object.values(snap.val()) : [] }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/playerState`), snap => setPlayerState(snap.val())));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/host`), snap => setRoomBasicInfo(prev => ({ ...prev, hostName: snap.val() || '' }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/moderators`), snap => setRoomBasicInfo(prev => ({ ...prev, moderators: snap.val() || [] }))));
-        listeners.push(onValue(ref(database, `rooms/${roomId}/videoMode`), snap => setVideoState(prev => ({ ...prev, mode: snap.val() || false }))));
+        listeners.push(onValue(ref(database, `rooms/${roomId}/members`), snap => {
+            const val = snap.exists() ? Object.values(snap.val()) as Member[] : [];
+            setMembersState(prev => {
+                const next = { ...prev, all: val };
+                setCachedState(roomId, 'membersState', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => {
+            const val = snap.exists() ? Object.values(snap.val()) as SeatedMember[] : [];
+            setMembersState(prev => {
+                const next = { ...prev, seated: val };
+                setCachedState(roomId, 'membersState', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/videoUrl`), snap => {
+            const val = snap.val() || '';
+            setVideoState(prev => {
+                const next = { ...prev, url: val };
+                setCachedState(roomId, 'videoState', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/currentVideoDetails`), snap => {
+            const val = snap.val() || null;
+            setVideoState(prev => {
+                const next = { ...prev, details: val };
+                setCachedState(roomId, 'videoState', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/name`), snap => {
+            const val = snap.val() || '';
+            setRoomBasicInfo(prev => {
+                const next = { ...prev, name: val };
+                setCachedState(roomId, 'roomBasicInfo', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/isPrivate`), snap => {
+            const val = snap.val() || false;
+            setRoomBasicInfo(prev => {
+                const next = { ...prev, isPrivate: val };
+                setCachedState(roomId, 'roomBasicInfo', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/backgroundUrl`), snap => {
+            const val = snap.val() || null;
+            setRoomBasicInfo(prev => {
+                const next = { ...prev, background: val };
+                setCachedState(roomId, 'roomBasicInfo', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/playlist`), snap => {
+            const val = snap.exists() ? Object.values(snap.val()) as PlaylistItem[] : [];
+            setVideoState(prev => {
+                const next = { ...prev, playlist: val };
+                setCachedState(roomId, 'videoState', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/playerState`), snap => {
+            const val = snap.val();
+            setPlayerState(val);
+            setCachedState(roomId, 'playerState', val);
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/host`), snap => {
+            const val = snap.val() || '';
+            setRoomBasicInfo(prev => {
+                const next = { ...prev, hostName: val };
+                setCachedState(roomId, 'roomBasicInfo', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/moderators`), snap => {
+            const val = snap.val() || [];
+            setRoomBasicInfo(prev => {
+                const next = { ...prev, moderators: val };
+                setCachedState(roomId, 'roomBasicInfo', next);
+                return next;
+            });
+        }));
+
+        listeners.push(onValue(ref(database, `rooms/${roomId}/videoMode`), snap => {
+            const val = snap.val() || false;
+            setVideoState(prev => {
+                const next = { ...prev, mode: val };
+                setCachedState(roomId, 'videoState', next);
+                return next;
+            });
+        }));
+
         listeners.push(onValue(ref(database, `rooms/${roomId}/giftStream`), snap => {
             if (snap.exists()) {
                 const allGifts = Object.values(snap.val());
@@ -480,14 +587,24 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 const RoomClient = ({ roomId }: { roomId: string }) => {
   const router = useRouter();
   const { user, isLoaded } = useUserSession();
-  const [roomData, setRoomData] = useState({ token: '', password: undefined as string | undefined, checked: false, seated: false, videoMode: false });
+  const [roomData, setRoomData] = useState(() => ({ 
+    token: '', 
+    password: undefined as string | undefined, 
+    checked: false, 
+    seated: false, 
+    videoMode: getCachedState(roomId, 'videoMode', false)
+  }));
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
   
   useEffect(() => {
     if (!isLoaded || !user) return;
     const listeners = [
         onValue(ref(database, `rooms/${roomId}/seatedMembers`), snap => setRoomData(p => ({ ...p, seated: snap.exists() && Object.values(snap.val()).some((m: any) => m.name === user.name) }))),
-        onValue(ref(database, `rooms/${roomId}/videoMode`), snap => setRoomData(p => ({ ...p, videoMode: snap.val() || false })))
+        onValue(ref(database, `rooms/${roomId}/videoMode`), snap => {
+            const val = snap.val() || false;
+            setRoomData(p => ({ ...p, videoMode: val }));
+            setCachedState(roomId, 'videoMode', val);
+        })
     ];
     return () => listeners.forEach(off);
   }, [isLoaded, user, roomId]);

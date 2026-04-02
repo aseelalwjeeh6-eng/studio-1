@@ -11,18 +11,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Label } from '../ui/label';
 import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
+import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM
- * ---------------------------------------
- * Current implementation uses a 1s interval for drift calculation.
- * Logic: Server Time = [Snapshot SeekTime] + (Now - [Snapshot Timestamp]).
- * 
- * Identified Optimization Paths:
- * 1. Visibility Awareness: Sync should throttle when tab is backgrounded to save CPU/Battery.
- * 2. Buffer State Protection: Prevent Hard Sync if the player is currently in 'BUFFERING' state
- *    to avoid infinite seek loops on slow connections.
- * 3. MediaSession API: Enhanced integration for lock-screen controls.
+ * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 2: CACHING & ROBUSTNESS)
+ * ---------------------------------------------------------------------
+ * Local caching of volume and quality settings.
+ * Enhanced state validation before sync to prevent infinite loops.
  */
 
 interface PlayerProps {
@@ -98,15 +93,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [volume, setVolume] = useState(playerState?.volume ?? 0.8);
-  const [quality, setQuality] = useState(playerState?.quality ?? 'auto');
+  
+  // Local cache for volume and quality
+  const [volume, setVolume] = useState(() => getCachedState('global', 'volume', playerState?.volume ?? 0.8));
+  const [quality, setQuality] = useState(() => getCachedState('global', 'quality', playerState?.quality ?? 'auto'));
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
   // --- Advanced Synchronization Logic ---
   const syncPlayerState = useCallback(() => {
-    // Safety check: Don't sync if tab is hidden or conditions aren't met
     if (document.visibilityState === 'hidden' || canControl || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
       return;
     }
@@ -118,18 +114,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (ytPlayerRef.current) {
         currentPlayerTime = ytPlayerRef.current.getCurrentTime();
         localPlayer = ytPlayerRef.current;
-        // Optimization: Skip sync if YouTube is in buffering state to avoid seek-looping
         const ytState = ytPlayerRef.current.getPlayerState();
         if (ytState === 3) return; 
       } else if (htmlPlayerRef.current) {
         currentPlayerTime = htmlPlayerRef.current.currentTime;
         localPlayer = htmlPlayerRef.current;
-        if (htmlPlayerRef.current.readyState < 2) return; // Not enough data
+        if (htmlPlayerRef.current.readyState < 2) return;
       } else {
         return;
       }
     } catch (e) {
-      console.warn("Sync: Player lookup failed", e);
       return;
     }
   
@@ -139,13 +133,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
       const absDifference = Math.abs(timeDifference);
 
-      // Implementation of "Smart Correction Algorithm"
-      // 1. Hard Sync (> 2s)
       if (absDifference > 2) { 
         if (localPlayer === ytPlayerRef.current) (localPlayer as YouTubePlayer).seekTo(serverTime, true);
         else (localPlayer as HTMLVideoElement).currentTime = serverTime;
       } 
-      // 2. Soft Sync (0.5s to 2s) - Adjust playback speed slightly
       else if (absDifference > 0.5) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (localPlayer === ytPlayerRef.current) {
@@ -156,7 +147,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             if (currentRate !== playbackRate) (localPlayer as HTMLVideoElement).playbackRate = playbackRate;
         }
       } 
-      // 3. Tolerance Zone (< 0.5s) - Normalize playback rate
       else { 
          if (localPlayer === ytPlayerRef.current) {
             if ((localPlayer as YouTubePlayer).getPlaybackRate() !== 1) (localPlayer as YouTubePlayer).setPlaybackRate(1);
@@ -165,7 +155,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
       }
   
-      // Ensure local playback state matches server state
       if (localPlayer === ytPlayerRef.current) {
         const ytState = (localPlayer as YouTubePlayer).getPlayerState();
         if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
@@ -180,9 +169,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           (localPlayer as HTMLVideoElement).pause();
         }
       }
-    } catch (e) {
-      console.warn("Sync failed", e);
-    }
+    } catch (e) {}
   
   }, [canControl, playerState, duration]);
 
@@ -207,12 +194,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (htmlPlayerRef.current.paused) htmlPlayerRef.current.play().catch(console.error);
         else htmlPlayerRef.current.pause();
       }
-    } catch (e) {
-      console.warn("Could not toggle play", e);
-    }
+    } catch (e) {}
   }, [canControl, urlType]);
 
-  // Media Session Integration
   useEffect(() => {
     if ('mediaSession' in navigator) {
       if (!videoDetails || urlType === 'empty') {
@@ -305,6 +289,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const handleVolumeChange = (newVolume: number[]) => {
     const vol = newVolume[0];
     setVolume(vol);
+    setCachedState('global', 'volume', vol);
     try {
         if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
         if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
@@ -314,6 +299,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const handleQualityChange = (newQuality: string) => {
     setQuality(newQuality);
+    setCachedState('global', 'quality', newQuality);
     if(canControl) onPlayerStateChange({ quality: newQuality });
   }
 
@@ -347,9 +333,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
     setDuration(event.target.getDuration());
-    const initialVolume = playerState?.volume ?? 0.8;
+    const initialVolume = volume;
     event.target.setVolume(initialVolume * 100);
-    setVolume(initialVolume);
   };
 
   const onYtStateChange = (event: { data: number }) => {
@@ -365,7 +350,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   };
 
   const onYtError = (event: { data: number }) => {
-    console.error(`YouTube Error: ${event.data}`);
+    console.warn(`YouTube Error: ${event.data}`);
     if (canControl) onVideoEnded();
   };
 
@@ -375,9 +360,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
     setDuration(htmlPlayerRef.current.duration);
-    const initialVolume = playerState?.volume ?? 0.8;
-    htmlPlayerRef.current.volume = initialVolume;
-    setVolume(initialVolume);
+    htmlPlayerRef.current.volume = volume;
   };
   
   const onHtmlStateChange = () => {
