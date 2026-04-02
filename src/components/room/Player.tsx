@@ -14,9 +14,10 @@ import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 8: PEAK STABILITY)
- * ---------------------------------------------------------------------
- * Robust synchronization with feedback loop prevention and local-only quality.
+ * TECHNICAL ANALYSIS - PLAYER STABILITY SYSTEM
+ * -------------------------------------------
+ * Fixes internal YouTube API crashes (this.g is null) by implementing 
+ * rigorous existence checks and proper lifecycle cleanup.
  */
 
 interface PlayerProps {
@@ -86,7 +87,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const htmlPlayerRef = useRef<HTMLVideoElement | null>(null);
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
-  const isInternalUpdate = useRef(false); // Prevents feedback loops from sync commands
+  const isInternalUpdate = useRef(false); 
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
@@ -94,12 +95,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Quality and Volume are local-only preferences
   const [volume, setVolume] = useState(() => getCachedState('global', 'volume', 0.8));
   const [quality, setQuality] = useState(() => getCachedState('global', 'quality', 'auto'));
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
+
+  // Guard: Reset player readiness when essential params change
+  useEffect(() => {
+    isPlayerReady.current = false;
+    ytPlayerRef.current = null;
+  }, [videoId, quality]);
 
   /**
    * Wake Lock - Prevent screen timeout during playback
@@ -107,26 +113,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   useEffect(() => {
     let wakeLock: any = null;
     const requestWakeLock = async () => {
-      if ('wakeLock' in navigator && playerState?.isPlaying) {
+      if (typeof window !== 'undefined' && 'wakeLock' in navigator && playerState?.isPlaying) {
         try {
           wakeLock = await (navigator as any).wakeLock.request('screen');
         } catch (err) {
-          console.warn('[Player] Wake Lock failed:', err);
+          // Silently fail if not supported or denied
         }
       }
     };
 
     requestWakeLock();
     return () => {
-      if (wakeLock) wakeLock.release().then(() => wakeLock = null);
+      if (wakeLock) wakeLock.release().then(() => wakeLock = null).catch(() => {});
     };
   }, [playerState?.isPlaying]);
 
   /**
-   * SYNCHRONIZATION LOOP (REFINED)
+   * SYNCHRONIZATION LOOP (REFINED & DEFENSIVE)
    */
   const syncPlayerState = useCallback(() => {
-    if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
+    // Visibility check & Environment check
+    if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current) {
       return;
     }
   
@@ -136,8 +143,13 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
       if (ytPlayerRef.current && urlType === 'youtube') {
         localPlayer = ytPlayerRef.current;
+        // CRITICAL DEFENSE: Check if the actual API functions exist before calling
+        if (typeof localPlayer.getPlayerState !== 'function' || typeof localPlayer.getCurrentTime !== 'function') {
+            return;
+        }
+        
         const ytState = localPlayer.getPlayerState();
-        if (ytState === 3 || ytState === -1) return;
+        if (ytState === 3 || ytState === -1) return; // Buffering or unstarted
         currentPlayerTime = localPlayer.getCurrentTime();
       } else if (htmlPlayerRef.current && urlType === 'direct') {
         localPlayer = htmlPlayerRef.current;
@@ -150,39 +162,45 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       return;
     }
   
+    if (!duration || duration === 0) {
+        try {
+            if (urlType === 'youtube' && typeof localPlayer.getDuration === 'function') {
+                setDuration(localPlayer.getDuration());
+            } else if (urlType === 'direct') {
+                setDuration(localPlayer.duration);
+            }
+        } catch(e) {}
+    }
+
     const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (Date.now() - (playerState.timestamp || Date.now())) / 1000 : 0);
     const timeDifference = serverTime - currentPlayerTime;
     const absDifference = Math.abs(timeDifference);
   
     try {
-      // Internal Update Guard: Set flag before programmatic changes
       isInternalUpdate.current = true;
 
       // 1. Correction Strategies
       if (absDifference > 2.5) { 
-        // Hard Sync
-        if (urlType === 'youtube') {
+        if (urlType === 'youtube' && typeof localPlayer.seekTo === 'function') {
             localPlayer.seekTo(serverTime, true);
-            localPlayer.setPlaybackRate(1);
-        } else {
+            if (typeof localPlayer.setPlaybackRate === 'function') localPlayer.setPlaybackRate(1);
+        } else if (urlType === 'direct') {
             localPlayer.currentTime = serverTime;
             localPlayer.playbackRate = 1;
         }
       } 
       else if (absDifference > 0.4) { 
-        // Soft Sync (Adjust playback rate)
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
-        if (urlType === 'youtube') {
+        if (urlType === 'youtube' && typeof localPlayer.setPlaybackRate === 'function') {
             if (localPlayer.getPlaybackRate() !== playbackRate) localPlayer.setPlaybackRate(playbackRate);
-        } else {
+        } else if (urlType === 'direct') {
             if (localPlayer.playbackRate !== playbackRate) localPlayer.playbackRate = playbackRate;
         }
       } 
       else { 
-         // Close enough, reset rate
-         if (urlType === 'youtube') {
+         if (urlType === 'youtube' && typeof localPlayer.setPlaybackRate === 'function') {
             if (localPlayer.getPlaybackRate() !== 1) localPlayer.setPlaybackRate(1);
-        } else {
+        } else if (urlType === 'direct') {
             if (localPlayer.playbackRate !== 1) localPlayer.playbackRate = 1;
         }
       }
@@ -191,9 +209,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (urlType === 'youtube') {
         const ytState = localPlayer.getPlayerState();
         if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
-          localPlayer.playVideo();
+          if (typeof localPlayer.playVideo === 'function') localPlayer.playVideo();
         } else if (!playerState.isPlaying && ytState === 1) {
-          localPlayer.pauseVideo();
+          if (typeof localPlayer.pauseVideo === 'function') localPlayer.pauseVideo();
         }
       } else {
         if (playerState.isPlaying && localPlayer.paused) {
@@ -203,7 +221,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         }
       }
 
-      // Reset internal update flag after a short delay
       setTimeout(() => { isInternalUpdate.current = false; }, 500);
 
     } catch (e) {
@@ -226,6 +243,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
     try {
       if (urlType === 'youtube' && ytPlayerRef.current) {
+        if (typeof ytPlayerRef.current.getPlayerState !== 'function') return;
         const state = ytPlayerRef.current.getPlayerState();
         if (state === 1) ytPlayerRef.current.pauseVideo();
         else ytPlayerRef.current.playVideo();
@@ -236,7 +254,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) {}
   }, [canControl, urlType]);
 
-  // Media Session metadata & controls
+  // Media Session integration
   useEffect(() => {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
       if (!videoDetails || urlType === 'empty') {
@@ -291,15 +309,21 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     
     let currentTime = 0;
     try {
-        if (ytPlayerRef.current) currentTime = ytPlayerRef.current.getCurrentTime();
-        if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+            currentTime = ytPlayerRef.current.getCurrentTime();
+        } else if (htmlPlayerRef.current) {
+            currentTime = htmlPlayerRef.current.currentTime;
+        }
     } catch(e) {}
 
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     isSeekingRef.current = true;
     try {
-        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true);
-        if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+            ytPlayerRef.current.seekTo(newTime, true);
+        } else if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.currentTime = newTime;
+        }
     } catch (e) {
         isSeekingRef.current = false;
         return;
@@ -315,8 +339,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setProgress(newTime);
     isSeekingRef.current = true;
     try {
-        if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, false);
-        if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+            ytPlayerRef.current.seekTo(newTime, false);
+        } else if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.currentTime = newTime;
+        }
     } catch (e) {}
   }, [canControl]);
   
@@ -324,8 +351,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
       try { 
-          if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, true); 
-          if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+              ytPlayerRef.current.seekTo(newTime, true); 
+          } else if (htmlPlayerRef.current) {
+              htmlPlayerRef.current.currentTime = newTime;
+          }
       } catch(e) {}
       onPlayerStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
@@ -336,8 +366,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(vol);
     setCachedState('global', 'volume', vol);
     try {
-        if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
-        if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+            ytPlayerRef.current.setVolume(vol * 100);
+        } else if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.volume = vol;
+        }
     } catch (e) {}
   }, []);
   
@@ -375,26 +408,30 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const onYtReady = useCallback((event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
-    setDuration(event.target.getDuration());
-    event.target.setVolume(volume * 100);
+    if (typeof event.target.getDuration === 'function') {
+        setDuration(event.target.getDuration());
+    }
+    if (typeof event.target.setVolume === 'function') {
+        event.target.setVolume(volume * 100);
+    }
   }, [volume]);
 
   const onYtStateChange = useCallback((event: { data: number }) => {
-    // GUARD: If this update was triggered by our own sync logic, ignore it
-    if (!canControl || isSeekingRef.current || isInternalUpdate.current) return;
+    if (!canControl || isSeekingRef.current || isInternalUpdate.current || !ytPlayerRef.current) return;
     
-    const currentTime = ytPlayerRef.current?.getCurrentTime();
-    if (currentTime === undefined) return;
+    try {
+        if (typeof ytPlayerRef.current.getCurrentTime !== 'function') return;
+        const currentTime = ytPlayerRef.current.getCurrentTime();
 
-    if (event.data === 1) { // Playing
-      if (!playerState?.isPlaying) onPlayerStateChange({ isPlaying: true, seekTime: currentTime });
-    } else if (event.data === 2) { // Paused
-       if (playerState?.isPlaying) onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
-    }
+        if (event.data === 1) { // Playing
+          if (!playerState?.isPlaying) onPlayerStateChange({ isPlaying: true, seekTime: currentTime });
+        } else if (event.data === 2) { // Paused
+           if (playerState?.isPlaying) onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
+        }
+    } catch(e) {}
   }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
 
   const onYtError = useCallback((event: { data: number }) => {
-    console.warn(`YouTube Error: ${event.data}`);
     if (canControl) onVideoEnded();
   }, [canControl, onVideoEnded]);
 
@@ -408,7 +445,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [volume]);
   
   const onHtmlStateChange = useCallback(() => {
-      // GUARD: If this update was triggered by our own sync logic, ignore it
       if (!canControl || isSeekingRef.current || !htmlPlayerRef.current || isInternalUpdate.current) return;
       
       const isPlaying = !htmlPlayerRef.current.paused;
