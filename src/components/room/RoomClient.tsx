@@ -22,7 +22,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import VideoConference from './VideoConference';
-import { getFriends, sendRoomInvitation, getFriendRequests, sendGift } from '@/lib/firebase-service';
+import { getFriends, sendRoomInvitation, sendGift } from '@/lib/firebase-service';
 import YouTube from 'react-youtube';
 import Playlist, { PlaylistItem } from './Playlist';
 import { cn } from '@/lib/utils';
@@ -31,6 +31,26 @@ import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
 import { Gifts } from '@/lib/gifts';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
+
+export type Member = { 
+  name: string;
+  avatarId?: string;
+  joinedAt: any; 
+};
+
+export type SeatedMember = {
+    name: string;
+    avatarId?: string;
+    seatId: number;
+}
+
+export type PlayerState = {
+    isPlaying: boolean;
+    seekTime: number;
+    timestamp: number;
+    volume: number;
+    quality: string;
+}
 
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
     const handleKeyClick = (key: string) => {
@@ -61,27 +81,33 @@ const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChan
     );
 };
 
-export type Member = { 
-  name: string;
-  avatarId?: string;
-  joinedAt: any; 
-};
-
-export type SeatedMember = {
-    name: string;
-    avatarId?: string;
-    seatId: number;
-}
-
-export type PlayerState = {
-    isPlaying: boolean;
-    seekTime: number;
-    timestamp: number;
-    volume: number;
-    quality: string;
-}
-
-const RoomHeader = ({ onSearchClick, onPlaylistClick, roomId, onLeaveRoom, onSwitchToVideo, onSwitchToPlayer, videoMode, onInviteClick, onSettingsClick, roomName, hostName, canControl }: { onSearchClick: () => void; onPlaylistClick: () => void; roomId: string; onLeaveRoom: () => void, onSwitchToVideo: () => void; onSwitchToPlayer: () => void; videoMode: boolean; onInviteClick: () => void; onSettingsClick: () => void; roomName?: string; hostName: string; canControl: boolean; }) => {
+const RoomHeader = ({ 
+    onSearchClick, 
+    onPlaylistClick, 
+    roomId, 
+    onLeaveRoom, 
+    onSwitchToVideo, 
+    onSwitchToPlayer, 
+    videoMode, 
+    onInviteClick, 
+    onSettingsClick, 
+    roomName, 
+    hostName, 
+    canControl 
+}: { 
+    onSearchClick: () => void; 
+    onPlaylistClick: () => void; 
+    roomId: string; 
+    onLeaveRoom: () => void;
+    onSwitchToVideo: () => void; 
+    onSwitchToPlayer: () => void; 
+    videoMode: boolean; 
+    onInviteClick: () => void; 
+    onSettingsClick: () => void; 
+    roomName?: string; 
+    hostName: string; 
+    canControl: boolean; 
+}) => {
     const { user } = useUserSession();
     const avatar = PlaceHolderImages.find(p => p.id === user?.avatarId) ?? PlaceHolderImages[0];
     const [isCopied, setIsCopied] = useState(false);
@@ -183,8 +209,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const [giftData, setGiftData] = useState({ target: '', stream: [] as any[] });
   
   const previewPlayerRef = useRef<any>(null);
-  const { room: livekitRoom } = useLiveKitRoom();
   const { localParticipant } = useLocalParticipant();
+  const { room: livekitRoom } = useLiveKitRoom();
   const participants = useParticipants();
 
   const isHost = useMemo(() => user?.name === roomBasicInfo.hostName, [user?.name, roomBasicInfo.hostName]);
@@ -257,9 +283,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         const roomSnapshot = await get(roomRef);
         if (!isMounted || !roomSnapshot.exists()) { if(isMounted) router.push('/lobby'); return; }
         
-        const initialRoomData = roomSnapshot.val();
-        setVideoState(prev => ({ ...prev, mode: initialRoomData.videoMode || false }));
-
         const subscribe = (path: string, callback: (snap: any) => void) => {
             const unsub = onValue(ref(database, path), (snap) => { if(isMounted) callback(snap); });
             unsubscribers.push(unsub);
@@ -328,10 +351,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         });
     };
     setupListeners();
-    return () => { 
-        isMounted = false; 
-        unsubscribers.forEach(unsub => unsub()); 
-    };
+    return () => { isMounted = false; unsubscribers.forEach(unsub => unsub()); };
   }, [roomId, router]);
 
   const handleTakeSeat = useCallback((seatId: number) => {

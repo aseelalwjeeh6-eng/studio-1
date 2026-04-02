@@ -70,13 +70,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const isBufferingRef = useRef(false); 
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Protect against sync loops: ignore external sync for 3s after local action
+  // حماية ضد حلقات المزامنة: تجاهل المزامنة الخارجية لمدة 3 ثوانٍ بعد أي إجراء محلي
   const lastLocalActionTime = useRef<number>(0);
 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const [feedback, setFeedback] = useState<{ type: string; visible: boolean }>({ type: '', visible: false });
+  
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -86,7 +87,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
-  // --- Core Utility & Handlers (Defined first to avoid lexical errors) ---
+  // --- دوال التحكم المساعدة (يجب تعريفها قبل الاستخدام في useEffect) ---
 
   const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
@@ -105,6 +106,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, []);
 
   const handlePlayerStateChangeWithGuard = useCallback((newState: Partial<PlayerState>) => {
+      // تحديث توقيت آخر إجراء محلي لمنع الارتداد للصفر
       lastLocalActionTime.current = Date.now();
       onPlayerStateChange(newState);
   }, [onPlayerStateChange]);
@@ -116,6 +118,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') currentTime = ytPlayerRef.current.getCurrentTime();
         else if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
     } catch(e) {}
+    
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     isSeekingRef.current = true;
     try {
@@ -123,6 +126,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
         triggerFeedback(amount > 0 ? 'forward' : 'backward');
     } catch (e) { isSeekingRef.current = false; return; }
+    
     setProgress(newTime);
     handlePlayerStateChangeWithGuard({ seekTime: newTime });
     setTimeout(() => { isSeekingRef.current = false; }, 500);
@@ -190,8 +194,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       setTimeout(() => { isSeekingRef.current = false; }, 200);
   }, [canControl, handlePlayerStateChangeWithGuard]);
 
+  // --- حلقة المزامنة الأساسية ---
+
   const syncPlayerState = useCallback(() => {
-    // Ignore external sync if user just performed a local action (prevents bouncing to zero)
+    // تجاهل المزامنة الخارجية إذا كان المستخدم قد تفاعل محلياً مؤخراً (يمنع الارتداد للصفر)
     if (Date.now() - lastLocalActionTime.current < 3000) return;
 
     if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current || isBufferingRef.current) return;
@@ -228,7 +234,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     try {
       isInternalUpdate.current = true;
-      // Increased threshold during initial seconds to prevent jitter
+      // عتبة أعلى قليلاً في البداية لضمان الاستقرار
       const syncThreshold = (currentPlayerTime < 5) ? 3.5 : 2.5;
 
       if (absDifference > syncThreshold) { 
@@ -268,20 +274,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) { isInternalUpdate.current = false; }
   }, [playerState, duration, urlType, getServerTimeNow, canControl, onVideoEnded]);
 
-  // --- Effects ---
+  // --- الـ Effects والمستمعين ---
 
   useEffect(() => { isPlayerReady.current = false; ytPlayerRef.current = null; }, [videoId, quality]);
-
-  useEffect(() => {
-    let wakeLock: any = null;
-    const requestWakeLock = async () => {
-      if (typeof window !== 'undefined' && 'wakeLock' in navigator && playerState?.isPlaying) {
-        try { wakeLock = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
-      }
-    };
-    requestWakeLock();
-    return () => { if (wakeLock) wakeLock.release().catch(() => {}); };
-  }, [playerState?.isPlaying]);
 
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
@@ -311,25 +306,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [canControl, volume, togglePlay, seek, handleVolumeChange]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
-      if (!videoDetails || urlType === 'empty') { navigator.mediaSession.metadata = null; return; }
-      try {
-          const artwork = [];
-          if (videoDetails.snippet.thumbnails.high) artwork.push({ src: videoDetails.snippet.thumbnails.high.url, sizes: '480x360', type: 'image/jpeg' });
-          navigator.mediaSession.metadata = new MediaMetadata({ title: videoDetails.snippet.title, artist: videoDetails.snippet.channelTitle, artwork: artwork });
-          navigator.mediaSession.setActionHandler('play', canControl ? togglePlay : null);
-          navigator.mediaSession.setActionHandler('pause', canControl ? togglePlay : null);
-          navigator.mediaSession.setActionHandler('seekbackward', canControl ? () => seek(-10) : null);
-          navigator.mediaSession.setActionHandler('seekforward', canControl ? () => seek(10) : null);
-      } catch (e) {}
-    }
-  }, [videoDetails, canControl, togglePlay, urlType, seek]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'mediaSession' in navigator) navigator.mediaSession.playbackState = playerState?.isPlaying ? "playing" : "paused";
-  }, [playerState?.isPlaying]);
-
-  useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
         if (!playerState || !duration || duration === 0 || isSeekingRef.current) return;
@@ -341,27 +317,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return () => { if (progressInterval) clearInterval(progressInterval); };
   }, [playerState, duration, getServerTimeNow]);
 
-  const handlePlayerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (urlType === 'empty' || urlType === 'iframe') { if(canControl) onSearchClick(); return; }
-    const DOUBLE_CLICK_THRESHOLD = 300;
-    const now = Date.now();
-    const clickX = e.clientX;
-    const { left, width } = e.currentTarget.getBoundingClientRect();
-    const clickSide = clickX < left + width / 3 ? 'left' : (clickX > left + width * 2 / 3 ? 'right' : 'center');
-    if (now - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD && clickSide === lastClickSideRef.current) {
-      if (canControl) {
-        if (clickSide === 'left') seek(-10);
-        else if (clickSide === 'right') seek(10);
-      }
-      lastClickTimeRef.current = 0;
-      lastClickSideRef.current = null;
-    } else {
-      lastClickTimeRef.current = now;
-      lastClickSideRef.current = clickSide;
-      if (clickSide === 'center' && canControl) togglePlay();
-    }
-  }, [canControl, urlType, seek, togglePlay, onSearchClick]);
-  
   const onYtReady = useCallback((event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
@@ -393,30 +348,39 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (playerState?.isPlaying !== isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
   }, [canControl, playerState?.isPlaying, handlePlayerStateChangeWithGuard]);
 
+  const handlePlayerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (urlType === 'empty' || urlType === 'iframe') { if(canControl) onSearchClick(); return; }
+    const now = Date.now();
+    const clickX = e.clientX;
+    const { left, width } = e.currentTarget.getBoundingClientRect();
+    const clickSide = clickX < left + width / 3 ? 'left' : (clickX > left + width * 2 / 3 ? 'right' : 'center');
+    
+    if (now - lastClickTimeRef.current < 300 && clickSide === lastClickSideRef.current) {
+      if (canControl) {
+        if (clickSide === 'left') seek(-10);
+        else if (clickSide === 'right') seek(10);
+      }
+      lastClickTimeRef.current = 0;
+    } else {
+      lastClickTimeRef.current = now;
+      lastClickSideRef.current = clickSide;
+      if (clickSide === 'center' && canControl) togglePlay();
+    }
+  }, [canControl, urlType, seek, togglePlay, onSearchClick]);
+
   const onMouseMove = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     setShowControls(true);
     controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
   }, []);
 
-  const onMouseLeave = useCallback(() => {
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    setShowControls(false);
-  }, []);
-
-  const VolumeIcon = useMemo(() => {
-    if (volume === 0) return VolumeX;
-    if (volume < 0.5) return Volume1;
-    return Volume2;
-  }, [volume]);
-
   return (
     <div 
         ref={containerRef}
         className={cn("w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative aspect-video group", !showControls && "cursor-none")}
-        onMouseMove={onMouseMove} onClick={handlePlayerClick} onMouseLeave={onMouseLeave}
+        onMouseMove={onMouseMove} onClick={handlePlayerClick} onMouseLeave={() => setShowControls(false)}
     >
-      <div className="absolute inset-0 w-full h-full">
+      <div className="absolute inset-0 w-full h-full pointer-events-none">
         {urlType === 'youtube' && videoId && (
             <YouTube
                 key={`${videoId}-${quality}`} videoId={videoId}
@@ -435,13 +399,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         {urlType === 'empty' && (
             <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
                 {canControl ? (
-                    <div className='w-full max-w-lg'><Film className="h-16 w-16 mb-4 mx-auto" /><h3 className="text-xl font-bold text-foreground">شاشة السينما فارغة</h3><p className='mb-4'>أضف فيديو من يوتيوب أو الصق رابط فيلم لبدء العرض.</p><Button onClick={onSearchClick} className="w-full" variant="secondary"><Search className="me-2 h-4 w-4" />إضافة فيديو</Button></div>
+                    <div className='w-full max-w-lg pointer-events-auto'><Film className="h-16 w-16 mb-4 mx-auto" /><h3 className="text-xl font-bold text-foreground">شاشة السينما فارغة</h3><p className='mb-4'>أضف فيديو من يوتيوب لبدء العرض.</p><Button onClick={onSearchClick} className="w-full" variant="secondary"><Search className="me-2 h-4 w-4" />إضافة فيديو</Button></div>
                 ) : (
                     <><Film className="h-16 w-16 mb-4" /><p className="text-lg">ينتظر المضيف لبدء الفيلم...</p></>
                 )}
             </div>
         )}
       </div>
+      
       {feedback.visible && (
         <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none"><div className="bg-black/40 p-6 rounded-full animate-in fade-in zoom-in duration-300">
             {feedback.type === 'play' && <Play className="w-12 h-12 text-white fill-white" />}
@@ -450,17 +415,20 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             {feedback.type === 'backward' && <div className="flex flex-col items-center"><Rewind className="w-12 h-12 text-white" /><span className="text-white text-xs font-bold mt-1">-10s</span></div>}
         </div></div>
       )}
+
       {urlType !== 'empty' && urlType !== 'iframe' && (
         <div className={cn("absolute inset-0 z-20 flex flex-col justify-between p-1 md:p-2 bg-gradient-to-t from-black/60 via-transparent to-black/20 transition-opacity duration-300", showControls ? "opacity-100" : "opacity-0")} onClick={(e) => e.stopPropagation()}>
-            <div></div>
+            <div />
             <div className="flex items-center justify-center">{canControl && (<Button onClick={togglePlay} size="icon" variant="ghost" className="text-white hover:bg-white/20 hover:text-white rounded-full w-12 h-12 md:w-16 md:h-16">{playerState?.isPlaying ? <Pause className="w-8 h-8 md:w-10 md:h-10 fill-white" /> : <Play className="w-8 h-8 md:w-10 md:h-10 fill-white" />}</Button>)}</div>
             <div className="flex items-center gap-1 md:gap-2 text-white font-mono text-xs md:text-sm">
-            {canControl ? (
-                <><span className="w-12 text-center">{formatTime(progress)}</span><Slider value={[progress]} max={duration || 100} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} /><span className="w-12 text-center">{formatTime(duration)}</span></>
-            ) : (
-                <><span className="w-12 text-center">{formatTime(progress)}</span><div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden"><div className="absolute h-full bg-primary" style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%`}}></div></div><span className="w-12 text-center">{formatTime(duration)}</span></>
-            )}
-                <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9"><VolumeIcon className="w-4 h-4 md:w-5 md:h-5" /></Button></PopoverTrigger><PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none"><Slider value={[volume]} max={1} step={0.05} orientation="vertical" className="h-24 w-2" onValueChange={handleVolumeChange} /></PopoverContent></Popover>
+                <span className="w-12 text-center">{formatTime(progress)}</span>
+                {canControl ? (
+                    <Slider value={[progress]} max={duration || 100} step={1} onValueChange={handleSliderChange} onValueCommit={handleSliderCommit} />
+                ) : (
+                    <div className="w-full h-2 bg-secondary/50 rounded-full relative overflow-hidden"><div className="absolute h-full bg-primary" style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%`}}></div></div>
+                )}
+                <span className="w-12 text-center">{formatTime(duration)}</span>
+                <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9"><Volume2 className="w-4 h-4 md:w-5 md:h-5" /></Button></PopoverTrigger><PopoverContent side="top" align="center" className="w-auto p-2 bg-black/50 border-none"><Slider value={[volume]} max={1} step={0.05} orientation="vertical" className="h-24 w-2" onValueChange={handleVolumeChange} /></PopoverContent></Popover>
                 {urlType === 'youtube' && canControl && (
                 <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white h-8 w-8 md:h-9 md:w-9"><Settings className="w-4 h-4 md:w-5 md:h-5" /></Button></PopoverTrigger><PopoverContent side="top" align="end" className="w-auto p-2 bg-black/50 border-none"><RadioGroup value={quality} onValueChange={handleQualityChange} className="text-white text-sm"><div className="flex items-center space-x-2"><RadioGroupItem value="auto" id="qauto" /><Label htmlFor="qauto">Auto</Label></div>{['hd1080', 'hd720', 'large', 'medium'].map(q => (<div key={q} className="flex items-center space-x-2"><RadioGroupItem value={q} id={`q${q}`} /><Label htmlFor={`q${q}`}>{q.replace('hd', '').replace('large', '480p').replace('medium', '360p')}</Label></div>))}</RadioGroup></PopoverContent></Popover>
                 )}
