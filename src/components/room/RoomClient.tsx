@@ -218,26 +218,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const isModerator = useMemo(() => roomBasicInfo.moderators.includes(user.name), [user.name, roomBasicInfo.moderators]);
   const canControl = useMemo(() => isHost || isModerator, [isHost, isModerator]);
 
-  const syncDriver = useMemo(() => {
-    if (!membersState.all || membersState.all.length === 0) return null;
-    
-    const sortedMembers = [...membersState.all].sort((a, b) => {
-        const timeA = (a.joinedAt?.seconds || a.joinedAt || 0);
-        const timeB = (b.joinedAt?.seconds || b.joinedAt || 0);
-        return timeA - timeB;
-    });
-
-    const hostMember = sortedMembers.find(m => m.name === roomBasicInfo.hostName);
-    if (hostMember) return hostMember.name;
-
-    const modMember = sortedMembers.find(m => roomBasicInfo.moderators && roomBasicInfo.moderators.includes(m.name));
-    if (modMember) return modMember.name;
-
-    return sortedMembers[0]?.name || null;
-  }, [membersState.all, roomBasicInfo.hostName, roomBasicInfo.moderators]);
-
-  const isSyncDriver = useMemo(() => user.name === syncDriver, [user.name, syncDriver]);
-
   const viewers = useMemo(() => {
     const seatedNames = new Set((membersState.seated || []).map(m => m.name));
     return (membersState.all || []).filter(m => !seatedNames.has(m.name));
@@ -252,7 +232,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
   useEffect(() => { if (isPasswordChecked) setAuth(prev => ({ ...prev, isFullyAuthed: !roomPassword })); }, [isPasswordChecked, roomPassword]);
 
-  // Sync clock with Firebase
+  // Sync clock with Firebase globally
   useEffect(() => {
     const offsetRef = ref(database, '.info/serverTimeOffset');
     const unsub = onValue(offsetRef, (snap) => {
@@ -297,8 +277,8 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
         const membersSnapshot = await get(membersRef);
         if (membersSnapshot.exists() && Object.keys(membersSnapshot.val()).length <= 1) {
-            // Only delete if NOBODY is left in the room
-            await remove(roomRef);
+            // Keep room alive even if empty, until explicitly deleted or logic cleanup
+            await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
         } else {
             await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
         }
@@ -462,24 +442,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     return () => { isMounted = false; unsubs.forEach(unsub => unsub()); };
   }, [roomId, router]);
 
-  // Heartbeat - Only advances server time, independent of who joins/leaves
-  useEffect(() => {
-    let heartbeatInterval: NodeJS.Timeout | null = null;
-    if (isSyncDriver && playerState?.isPlaying) {
-        heartbeatInterval = setInterval(() => {
-            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-                runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
-                    if (curr && curr.isPlaying) {
-                        return { ...curr, timestamp: serverTimestamp() };
-                    }
-                    return curr;
-                }).catch(() => {});
-            }
-        }, 5000);
-    }
-    return () => { if(heartbeatInterval) clearInterval(heartbeatInterval); };
-  }, [isSyncDriver, playerState?.isPlaying, roomId]);
-
   useEffect(() => {
       if(typeof window !== 'undefined') {
           try {
@@ -534,15 +496,19 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       }
   }, [canControl]);
 
-  // Video session updates - Triggered ONLY by UI actions
+  // Purely persistence-based playback updates
   const onSetVideo = useCallback((videoIdentifier: string, startTime = 0, videoDetails?: YouTubeVideo) => {
     if (canControl) {
       const updates: any = {};
       updates[`/rooms/${roomId}/videoUrl`] = videoIdentifier;
       updates[`/rooms/${roomId}/currentVideoDetails`] = videoDetails || null;
+      // The timestamp is the reference point for the whole room
       updates[`/rooms/${roomId}/playerState`] = { 
-        isPlaying: !!videoIdentifier, seekTime: startTime, timestamp: serverTimestamp(),
-        volume: playerState?.volume ?? 0.8, quality: playerState?.quality ?? 'auto'
+        isPlaying: !!videoIdentifier, 
+        seekTime: startTime, 
+        timestamp: serverTimestamp(),
+        volume: playerState?.volume ?? 0.8, 
+        quality: playerState?.quality ?? 'auto'
       };
       update(ref(database), updates).catch(() => {});
     }
@@ -553,6 +519,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
         const c = curr || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
         const updated = { ...c, ...newState };
+        // Any change in playback or seek resets the reference timestamp
         const shouldStamp = (newState.isPlaying !== undefined && newState.isPlaying !== c.isPlaying) || newState.seekTime !== undefined;
         return shouldStamp ? { ...updated, timestamp: serverTimestamp() } : updated;
     }).catch(() => {});

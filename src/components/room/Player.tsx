@@ -100,7 +100,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
-  // Helper to get synced time
+  // Helper to get global synced server time
   const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
   useEffect(() => {
@@ -160,15 +160,22 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         } catch(e) {}
     }
 
-    // Precise server time calculation
+    // PURE CLOUD SYNC: Target position depends ONLY on the server timestamp and start position
     const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
+    
+    // Automatically trigger end flow if past duration (Cloud-side cleanup logic)
+    if (duration > 0 && serverTime > duration + 5) {
+        if (canControl) onVideoEnded();
+        return;
+    }
+
     const timeDifference = serverTime - currentPlayerTime;
     const absDifference = Math.abs(timeDifference);
   
     try {
       isInternalUpdate.current = true;
 
-      // Hard Sync (Jumps)
+      // Hard Sync: For significant drifts or new joins
       if (absDifference > 2.5) { 
         if (urlType === 'youtube' && typeof localPlayer.seekTo === 'function') {
             localPlayer.seekTo(serverTime, true);
@@ -178,7 +185,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             localPlayer.playbackRate = 1;
         }
       } 
-      // Soft Sync (Speed adjust)
+      // Soft Sync: Adjust playback rate for tiny desyncs
       else if (absDifference > 0.4) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (urlType === 'youtube' && typeof localPlayer.setPlaybackRate === 'function') {
@@ -210,7 +217,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       setTimeout(() => { isInternalUpdate.current = false; }, 500);
     } catch (e) { isInternalUpdate.current = false; }
   
-  }, [playerState, duration, urlType, getServerTimeNow]);
+  }, [playerState, duration, urlType, getServerTimeNow, canControl, onVideoEnded]);
 
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
@@ -288,7 +295,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canControl, volume, togglePlay]);
+  }, [canControl, volume, togglePlay, seek]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
@@ -311,7 +318,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           navigator.mediaSession.setActionHandler('seekforward', canControl ? () => seek(10) : null);
       } catch (e) {}
     }
-  }, [videoDetails, canControl, togglePlay, urlType]);
+  }, [videoDetails, canControl, togglePlay, urlType, seek]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
