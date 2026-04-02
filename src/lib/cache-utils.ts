@@ -34,6 +34,7 @@ const isStorageAvailable = () => {
 
 /**
  * Sets a value in the local cache with metadata.
+ * OPTIMIZATION: Prevents redundant writes if data is unchanged.
  */
 export function setCachedState<T>(roomId: string, key: string, value: T, options?: CacheOptions) {
   if (!isStorageAvailable()) return;
@@ -45,9 +46,15 @@ export function setCachedState<T>(roomId: string, key: string, value: T, options
       version: CACHE_VERSION,
       ttl: options?.ttl,
     };
-    window.localStorage.setItem(storageKey, JSON.stringify(entry));
+    
+    const stringifiedEntry = JSON.stringify(entry);
+    const existingRaw = window.localStorage.getItem(storageKey);
+    
+    // Performance Guard: Avoid writing to disk if the data is identical
+    if (existingRaw === stringifiedEntry) return;
+    
+    window.localStorage.setItem(storageKey, stringifiedEntry);
   } catch (e) {
-    // Fail silently or log for developers
     console.warn('[Cache] Set failed:', e);
   }
 }

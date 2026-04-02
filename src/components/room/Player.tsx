@@ -14,9 +14,9 @@ import { YouTubeVideo } from '@/ai/flows/youtube-search-flow';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
 /**
- * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 5: HARDENED SYNC)
+ * TECHNICAL ANALYSIS - PLAYER SYNC SYSTEM (PHASE 6: OPTIMIZED RENDERS)
  * ---------------------------------------------------------------------
- * Robust synchronization with error boundaries and state protection.
+ * Robust synchronization with memoized handlers and efficient state management.
  */
 
 interface PlayerProps {
@@ -100,11 +100,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
   /**
-   * SYNCHRONIZATION LOOP PROTECTION (PHASE 5)
-   * Hardened sync logic with extensive error boundaries.
+   * SYNCHRONIZATION LOOP PROTECTION (PHASE 6)
+   * Hardened sync logic with extensive error boundaries and performance optimizations.
    */
   const syncPlayerState = useCallback(() => {
-    // 1. Safety Checks
+    // 1. Safety Checks - Skip sync if tab is hidden to save battery/CPU
     if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || !duration || isSeekingRef.current) {
       return;
     }
@@ -148,7 +148,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             localPlayer.playbackRate = 1;
         }
       } 
-      // Soft Sync (0.5s - 2s)
+      // Soft Sync (0.5s - 2s) - Adjust playback rate for smooth catch-up
       else if (absDifference > 0.5) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (urlType === 'youtube') {
@@ -211,7 +211,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) {}
   }, [canControl, urlType]);
 
-  // Media Session metadata & controls
+  // Media Session metadata & controls - Optimized with memoization
   useEffect(() => {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
       if (!videoDetails || urlType === 'empty') {
@@ -231,8 +231,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             artwork: artwork
           });
           
-          navigator.mediaSession.setActionHandler('play', canControl ? () => togglePlay() : null);
-          navigator.mediaSession.setActionHandler('pause', canControl ? () => togglePlay() : null);
+          navigator.mediaSession.setActionHandler('play', canControl ? togglePlay : null);
+          navigator.mediaSession.setActionHandler('pause', canControl ? togglePlay : null);
       } catch (e) {}
     }
   }, [videoDetails, canControl, togglePlay, urlType]);
@@ -284,7 +284,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setTimeout(() => { isSeekingRef.current = false; }, 500);
   }, [canControl, duration, onPlayerStateChange]);
 
-  const handleSliderChange = (value: number[]) => {
+  const handleSliderChange = useCallback((value: number[]) => {
     if (!canControl || !isPlayerReady.current) return;
     const newTime = value[0];
     setProgress(newTime);
@@ -293,9 +293,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (ytPlayerRef.current) ytPlayerRef.current.seekTo(newTime, false);
         if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
     } catch (e) {}
-  };
+  }, [canControl]);
   
-  const handleSliderCommit = (value: number[]) => {
+  const handleSliderCommit = useCallback((value: number[]) => {
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
       try { 
@@ -304,9 +304,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       } catch(e) {}
       onPlayerStateChange({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
-  };
+  }, [canControl, onPlayerStateChange]);
   
-  const handleVolumeChange = (newVolume: number[]) => {
+  const handleVolumeChange = useCallback((newVolume: number[]) => {
     const vol = newVolume[0];
     setVolume(vol);
     setCachedState('global', 'volume', vol);
@@ -314,14 +314,14 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (ytPlayerRef.current) ytPlayerRef.current.setVolume(vol * 100);
         if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
     } catch (e) {}
-  };
+  }, []);
   
-  const handleQualityChange = (newQuality: string) => {
+  const handleQualityChange = useCallback((newQuality: string) => {
     setQuality(newQuality);
     setCachedState('global', 'quality', newQuality);
-  }
+  }, []);
 
-  const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePlayerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (urlType === 'empty' || urlType === 'iframe') {
         if(canControl) onSearchClick();
         return;
@@ -345,16 +345,16 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       lastClickSideRef.current = clickSide;
       if (clickSide === 'center' && canControl) togglePlay();
     }
-  };
+  }, [canControl, urlType, seek, togglePlay, onSearchClick]);
   
-  const onYtReady = (event: { target: YouTubePlayer }) => {
+  const onYtReady = useCallback((event: { target: YouTubePlayer }) => {
     ytPlayerRef.current = event.target;
     isPlayerReady.current = true;
     setDuration(event.target.getDuration());
     event.target.setVolume(volume * 100);
-  };
+  }, [volume]);
 
-  const onYtStateChange = (event: { data: number }) => {
+  const onYtStateChange = useCallback((event: { data: number }) => {
     if (!canControl || isSeekingRef.current) return;
     const currentTime = ytPlayerRef.current?.getCurrentTime();
     if (currentTime === undefined) return;
@@ -364,37 +364,37 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } else if (event.data === 2) { // Paused
        if (playerState?.isPlaying) onPlayerStateChange({ isPlaying: false, seekTime: currentTime });
     }
-  };
+  }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
 
-  const onYtError = (event: { data: number }) => {
+  const onYtError = useCallback((event: { data: number }) => {
     console.warn(`YouTube Error: ${event.data}`);
     if (canControl) onVideoEnded();
-  };
+  }, [canControl, onVideoEnded]);
 
-  const onYtEnd = () => { if (canControl) onVideoEnded(); };
+  const onYtEnd = useCallback(() => { if (canControl) onVideoEnded(); }, [canControl, onVideoEnded]);
 
-  const onHtmlReady = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+  const onHtmlReady = useCallback((e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     if (!htmlPlayerRef.current) return;
     isPlayerReady.current = true;
     setDuration(htmlPlayerRef.current.duration);
     htmlPlayerRef.current.volume = volume;
-  };
+  }, [volume]);
   
-  const onHtmlStateChange = () => {
+  const onHtmlStateChange = useCallback(() => {
       if (!canControl || isSeekingRef.current || !htmlPlayerRef.current) return;
       const isPlaying = !htmlPlayerRef.current.paused;
       if (playerState?.isPlaying !== isPlaying) onPlayerStateChange({ isPlaying: isPlaying, seekTime: htmlPlayerRef.current.currentTime });
-  };
+  }, [canControl, playerState?.isPlaying, onPlayerStateChange]);
 
-  const onHtmlEnded = () => { if (canControl) onVideoEnded(); }
+  const onHtmlEnded = useCallback(() => { if (canControl) onVideoEnded(); }, [canControl, onVideoEnded]);
 
-  const formatTime = (seconds: number) => {
+  const formatTime = useCallback((seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return '00:00';
     const date = new Date(0);
     date.setSeconds(seconds);
     const hasHours = date.getUTCHours() > 0;
     return date.toISOString().substr(hasHours ? 11 : 14, hasHours ? 8 : 5);
-  };
+  }, []);
 
   // Cleanup effects
   useEffect(() => {
@@ -402,92 +402,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
           if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       }
   }, []);
-
-  const renderContent = () => {
-    switch(urlType) {
-        case 'youtube':
-            if (!videoId) return renderEmptyState('Invalid YouTube URL');
-            const serverTs = playerState?.timestamp || Date.now();
-            const startSeconds = (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - serverTs) / 1000 : 0);
-            return (
-                <YouTube
-                  key={`${videoId}-${quality}`}
-                  videoId={videoId}
-                  opts={{
-                    height: '100%',
-                    width: '100%',
-                    playerVars: {
-                      autoplay: playerState?.isPlaying ? 1 : 0,
-                      start: Math.floor(Math.max(0, startSeconds)),
-                      controls: 0,
-                      rel: 0,
-                      showinfo: 0,
-                      modestbranding: 1,
-                      iv_load_policy: 3,
-                      disablekb: 1,
-                      playsinline: 1,
-                      ...(quality !== 'auto' && {vq: quality})
-                    },
-                  }}
-                  onReady={onYtReady}
-                  onStateChange={onYtStateChange}
-                  onEnd={onYtEnd}
-                  onError={onYtError}
-                  className="w-full h-full"
-                />
-            );
-        case 'direct':
-             const directTs = playerState?.timestamp || Date.now();
-             const directStartSeconds = (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - directTs) / 1000 : 0);
-            return (
-                <video
-                    ref={htmlPlayerRef}
-                    src={`${videoUrl}#t=${Math.max(0, directStartSeconds)}`}
-                    className="w-full h-full object-contain"
-                    onLoadedData={onHtmlReady}
-                    onPlay={onHtmlStateChange}
-                    onPause={onHtmlStateChange}
-                    onEnded={onHtmlEnded}
-                    playsInline
-                    autoPlay={playerState?.isPlaying}
-                />
-            );
-        case 'iframe':
-             return (
-              <iframe
-                src={videoUrl}
-                title="Shared Content"
-                className="w-full h-full border-0"
-                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                allowFullScreen
-                sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-presentation"
-              ></iframe>
-            );
-        default:
-            return renderEmptyState();
-    }
-  };
-
-  const renderEmptyState = (message?: string) => (
-    <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
-      {canControl ? (
-        <div className='w-full max-w-lg'>
-          <Film className="h-16 w-16 mb-4 mx-auto" />
-          <h3 className="text-xl font-bold text-foreground">شاشة السينما فارغة</h3>
-          <p className='mb-4'>{message || 'أضف فيديو من يوتيوب أو الصق رابط فيلم لبدء العرض.'}</p>
-          <Button onClick={onSearchClick} className="w-full" variant="secondary">
-            <Search className="me-2 h-4 w-4" />
-            إضافة فيديو
-          </Button>
-        </div>
-      ) : (
-        <>
-          <Film className="h-16 w-16 mb-4" />
-          <p className="text-lg">ينتظر المضيف لبدء الفيلم...</p>
-        </>
-      )}
-    </div>
-  );
 
   const VolumeIcon = useMemo(() => {
     if (volume === 0) return VolumeX;
@@ -569,21 +483,96 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     );
   };
 
+  const onMouseMove = useCallback(() => {
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    setShowControls(true);
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+  }, []);
+
+  const onMouseLeave = useCallback(() => {
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    setShowControls(false);
+  }, []);
+
   return (
     <div 
         className="w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative aspect-video"
-        onMouseMove={() => {
-            if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-            setShowControls(true);
-            controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
-        }}
+        onMouseMove={onMouseMove}
         onClick={handlePlayerClick}
-        onMouseLeave={() => {
-            if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-            setShowControls(false);
-        }}
+        onMouseLeave={onMouseLeave}
     >
-      <div className="absolute inset-0 w-full h-full">{renderContent()}</div>
+      <div className="absolute inset-0 w-full h-full">
+        {urlType === 'youtube' && videoId && (
+            <YouTube
+                key={`${videoId}-${quality}`}
+                videoId={videoId}
+                opts={{
+                height: '100%',
+                width: '100%',
+                playerVars: {
+                    autoplay: playerState?.isPlaying ? 1 : 0,
+                    start: Math.floor(Math.max(0, (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - (playerState?.timestamp || Date.now())) / 1000 : 0))),
+                    controls: 0,
+                    rel: 0,
+                    showinfo: 0,
+                    modestbranding: 1,
+                    iv_load_policy: 3,
+                    disablekb: 1,
+                    playsinline: 1,
+                    ...(quality !== 'auto' && {vq: quality})
+                },
+                }}
+                onReady={onYtReady}
+                onStateChange={onYtStateChange}
+                onEnd={onYtEnd}
+                onError={onYtError}
+                className="w-full h-full"
+            />
+        )}
+        {urlType === 'direct' && (
+            <video
+                ref={htmlPlayerRef}
+                src={`${videoUrl}#t=${Math.max(0, (playerState?.seekTime ?? 0) + (playerState?.isPlaying ? (Date.now() - (playerState?.timestamp || Date.now())) / 1000 : 0))}`}
+                className="w-full h-full object-contain"
+                onLoadedData={onHtmlReady}
+                onPlay={onHtmlStateChange}
+                onPause={onHtmlStateChange}
+                onEnded={onHtmlEnded}
+                playsInline
+                autoPlay={playerState?.isPlaying}
+            />
+        )}
+        {urlType === 'iframe' && (
+            <iframe
+                src={videoUrl}
+                title="Shared Content"
+                className="w-full h-full border-0"
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                allowFullScreen
+                sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-presentation"
+            ></iframe>
+        )}
+        {urlType === 'empty' && (
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+                {canControl ? (
+                    <div className='w-full max-w-lg'>
+                        <Film className="h-16 w-16 mb-4 mx-auto" />
+                        <h3 className="text-xl font-bold text-foreground">شاشة السينما فارغة</h3>
+                        <p className='mb-4'>أضف فيديو من يوتيوب أو الصق رابط فيلم لبدء العرض.</p>
+                        <Button onClick={onSearchClick} className="w-full" variant="secondary">
+                            <Search className="me-2 h-4 w-4" />
+                            إضافة فيديو
+                        </Button>
+                    </div>
+                ) : (
+                    <>
+                        <Film className="h-16 w-16 mb-4" />
+                        <p className="text-lg">ينتظر المضيف لبدء الفيلم...</p>
+                    </>
+                )}
+            </div>
+        )}
+      </div>
       {renderCustomControls()}
     </div>
   );
