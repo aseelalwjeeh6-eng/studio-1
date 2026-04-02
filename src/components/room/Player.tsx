@@ -82,7 +82,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const isPlayerReady = useRef(false);
   const isSeekingRef = useRef(false);
   const isInternalUpdate = useRef(false); 
-  const isBufferingRef = useRef(false); // New: Track buffering to avoid sync fights
+  const isBufferingRef = useRef(false); 
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [progress, setProgress] = useState(0);
@@ -98,24 +98,17 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
-  // Guard: Reset player readiness when essential params change
   useEffect(() => {
     isPlayerReady.current = false;
     ytPlayerRef.current = null;
   }, [videoId, quality]);
 
-  /**
-   * Visual Feedback Helper
-   */
   const triggerFeedback = useCallback((type: string) => {
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     setFeedback({ type, visible: true });
     feedbackTimeoutRef.current = setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
   }, []);
 
-  /**
-   * Wake Lock - Prevent screen timeout
-   */
   useEffect(() => {
     let wakeLock: any = null;
     const requestWakeLock = async () => {
@@ -127,9 +120,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return () => { if (wakeLock) wakeLock.release().catch(() => {}); };
   }, [playerState?.isPlaying]);
 
-  /**
-   * SYNCHRONIZATION LOOP (REFINED)
-   */
   const syncPlayerState = useCallback(() => {
     if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current || isBufferingRef.current) {
       return;
@@ -245,9 +235,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) {}
   }, [canControl, urlType, triggerFeedback]);
 
-  /**
-   * KEYBOARD SHORTCUTS
-   */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
@@ -295,7 +282,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canControl, volume, togglePlay]);
 
-  // Media Session integration
   useEffect(() => {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
       if (!videoDetails || urlType === 'empty') {
@@ -506,7 +492,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         ref={containerRef}
         className={cn(
             "w-full max-w-full rounded-lg overflow-hidden shadow-md bg-black relative aspect-video group",
-            !showControls && "cursor-none" // Hide cursor when controls are hidden
+            !showControls && "cursor-none"
         )}
         onMouseMove={onMouseMove}
         onClick={handlePlayerClick}
@@ -584,10 +570,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         )}
       </div>
 
-      {/* Visual Feedback Overlays */}
       {renderFeedback()}
 
-      {/* Custom Controls Overlay */}
       {urlType !== 'empty' && urlType !== 'iframe' && (
         <div 
             className={cn(

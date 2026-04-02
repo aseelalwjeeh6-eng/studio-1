@@ -37,12 +37,6 @@ import GiftAnimationOverlay from './GiftAnimationOverlay';
 import { Gifts } from '@/lib/gifts';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
 
-/**
- * TECHNICAL ANALYSIS - ROOM ARCHITECTURE (PHASE 8: PEAK STABILITY)
- * -------------------------------------------------------------
- * Final verification of deterministic sync handover and lifecycle cleanup.
- */
-
 const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChange: (pin: string) => void; pinLength: number }) => {
     const handleKeyClick = (key: string) => {
         let newPin = pin;
