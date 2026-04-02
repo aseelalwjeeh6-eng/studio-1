@@ -100,13 +100,9 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
 
-  // Helper to get global synced server time
-  const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
+  // --- Utility & Handlers (Defined first to avoid lexical error) ---
 
-  useEffect(() => {
-    isPlayerReady.current = false;
-    ytPlayerRef.current = null;
-  }, [videoId, quality]);
+  const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
   const triggerFeedback = useCallback((type: string) => {
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
@@ -114,16 +110,96 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     feedbackTimeoutRef.current = setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
   }, []);
 
-  useEffect(() => {
-    let wakeLock: any = null;
-    const requestWakeLock = async () => {
-      if (typeof window !== 'undefined' && 'wakeLock' in navigator && playerState?.isPlaying) {
-        try { wakeLock = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
+  const formatTime = useCallback((seconds: number) => {
+    if (isNaN(seconds) || seconds < 0) return '00:00';
+    const date = new Date(0);
+    date.setSeconds(seconds);
+    const hasHours = date.getUTCHours() > 0;
+    return date.toISOString().substr(hasHours ? 11 : 14, hasHours ? 8 : 5);
+  }, []);
+
+  const seek = useCallback((amount: number) => {
+    if (!canControl || !isPlayerReady.current || !duration) return;
+    
+    let currentTime = 0;
+    try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') currentTime = ytPlayerRef.current.getCurrentTime();
+        else if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
+    } catch(e) {}
+
+    const newTime = Math.max(0, Math.min(duration, currentTime + amount));
+    isSeekingRef.current = true;
+    try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true);
+        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+        triggerFeedback(amount > 0 ? 'forward' : 'backward');
+    } catch (e) { isSeekingRef.current = false; return; }
+    setProgress(newTime);
+    onPlayerStateChange({ seekTime: newTime });
+    setTimeout(() => { isSeekingRef.current = false; }, 500);
+  }, [canControl, duration, onPlayerStateChange, triggerFeedback]);
+
+  const togglePlay = useCallback(() => {
+    if (!canControl || !isPlayerReady.current) return;
+    try {
+      if (urlType === 'youtube' && ytPlayerRef.current) {
+        if (typeof ytPlayerRef.current.getPlayerState !== 'function') return;
+        const state = ytPlayerRef.current.getPlayerState();
+        if (state === 1) {
+            ytPlayerRef.current.pauseVideo();
+            triggerFeedback('pause');
+        } else {
+            ytPlayerRef.current.playVideo();
+            triggerFeedback('play');
+        }
+      } else if (urlType === 'direct' && htmlPlayerRef.current) {
+        if (htmlPlayerRef.current.paused) {
+            htmlPlayerRef.current.play().catch(() => {});
+            triggerFeedback('play');
+        } else {
+            htmlPlayerRef.current.pause();
+            triggerFeedback('pause');
+        }
       }
-    };
-    requestWakeLock();
-    return () => { if (wakeLock) wakeLock.release().catch(() => {}); };
-  }, [playerState?.isPlaying]);
+    } catch (e) {}
+  }, [canControl, urlType, triggerFeedback]);
+
+  const handleVolumeChange = useCallback((newVolume: number[]) => {
+    const vol = newVolume[0];
+    setVolume(vol);
+    setCachedState('global', 'volume', vol);
+    try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') ytPlayerRef.current.setVolume(vol * 100);
+        else if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
+    } catch (e) {}
+  }, []);
+  
+  const handleQualityChange = useCallback((newQuality: string) => {
+    setQuality(newQuality);
+    setCachedState('global', 'quality', newQuality);
+  }, []);
+
+  const handleSliderChange = useCallback((value: number[]) => {
+    if (!canControl || !isPlayerReady.current) return;
+    const newTime = value[0];
+    setProgress(newTime);
+    isSeekingRef.current = true;
+    try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, false);
+        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+    } catch (e) {}
+  }, [canControl]);
+  
+  const handleSliderCommit = useCallback((value: number[]) => {
+      if (!canControl || !isPlayerReady.current) return;
+      const newTime = value[0];
+      try { 
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true); 
+          else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+      } catch(e) {}
+      onPlayerStateChange({ seekTime: newTime });
+      setTimeout(() => { isSeekingRef.current = false; }, 200);
+  }, [canControl, onPlayerStateChange]);
 
   const syncPlayerState = useCallback(() => {
     if (typeof window === 'undefined' || document.visibilityState === 'hidden' || !isPlayerReady.current || !playerState || isSeekingRef.current || isBufferingRef.current) {
@@ -160,10 +236,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         } catch(e) {}
     }
 
-    // PURE CLOUD SYNC: Target position depends ONLY on the server timestamp and start position
     const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
     
-    // Automatically trigger end flow if past duration (Cloud-side cleanup logic)
     if (duration > 0 && serverTime > duration + 5) {
         if (canControl) onVideoEnded();
         return;
@@ -175,7 +249,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     try {
       isInternalUpdate.current = true;
 
-      // Hard Sync: For significant drifts or new joins
       if (absDifference > 2.5) { 
         if (urlType === 'youtube' && typeof localPlayer.seekTo === 'function') {
             localPlayer.seekTo(serverTime, true);
@@ -185,7 +258,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
             localPlayer.playbackRate = 1;
         }
       } 
-      // Soft Sync: Adjust playback rate for tiny desyncs
       else if (absDifference > 0.4) { 
         const playbackRate = timeDifference > 0 ? 1.05 : 0.95;
         if (urlType === 'youtube' && typeof localPlayer.setPlaybackRate === 'function') {
@@ -219,36 +291,29 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   }, [playerState, duration, urlType, getServerTimeNow, canControl, onVideoEnded]);
 
+  // --- Effects ---
+
+  useEffect(() => {
+    isPlayerReady.current = false;
+    ytPlayerRef.current = null;
+  }, [videoId, quality]);
+
+  useEffect(() => {
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      if (typeof window !== 'undefined' && 'wakeLock' in navigator && playerState?.isPlaying) {
+        try { wakeLock = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
+      }
+    };
+    requestWakeLock();
+    return () => { if (wakeLock) wakeLock.release().catch(() => {}); };
+  }, [playerState?.isPlaying]);
+
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     syncIntervalRef.current = setInterval(syncPlayerState, 1000);
     return () => { if (syncIntervalRef.current) clearInterval(syncIntervalRef.current); };
   }, [syncPlayerState]);
-
-  const togglePlay = useCallback(() => {
-    if (!canControl || !isPlayerReady.current) return;
-    try {
-      if (urlType === 'youtube' && ytPlayerRef.current) {
-        if (typeof ytPlayerRef.current.getPlayerState !== 'function') return;
-        const state = ytPlayerRef.current.getPlayerState();
-        if (state === 1) {
-            ytPlayerRef.current.pauseVideo();
-            triggerFeedback('pause');
-        } else {
-            ytPlayerRef.current.playVideo();
-            triggerFeedback('play');
-        }
-      } else if (urlType === 'direct' && htmlPlayerRef.current) {
-        if (htmlPlayerRef.current.paused) {
-            htmlPlayerRef.current.play().catch(() => {});
-            triggerFeedback('play');
-        } else {
-            htmlPlayerRef.current.pause();
-            triggerFeedback('pause');
-        }
-      }
-    } catch (e) {}
-  }, [canControl, urlType, triggerFeedback]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -295,7 +360,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canControl, volume, togglePlay, seek]);
+  }, [canControl, volume, togglePlay, seek, handleVolumeChange]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
@@ -338,63 +403,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     return () => { if (progressInterval) clearInterval(progressInterval); };
   }, [playerState, duration, getServerTimeNow]);
 
-  const seek = useCallback((amount: number) => {
-    if (!canControl || !isPlayerReady.current || !duration) return;
-    
-    let currentTime = 0;
-    try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') currentTime = ytPlayerRef.current.getCurrentTime();
-        else if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
-    } catch(e) {}
-
-    const newTime = Math.max(0, Math.min(duration, currentTime + amount));
-    isSeekingRef.current = true;
-    try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true);
-        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
-        triggerFeedback(amount > 0 ? 'forward' : 'backward');
-    } catch (e) { isSeekingRef.current = false; return; }
-    setProgress(newTime);
-    onPlayerStateChange({ seekTime: newTime });
-    setTimeout(() => { isSeekingRef.current = false; }, 500);
-  }, [canControl, duration, onPlayerStateChange, triggerFeedback]);
-
-  const handleSliderChange = useCallback((value: number[]) => {
-    if (!canControl || !isPlayerReady.current) return;
-    const newTime = value[0];
-    setProgress(newTime);
-    isSeekingRef.current = true;
-    try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, false);
-        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
-    } catch (e) {}
-  }, [canControl]);
-  
-  const handleSliderCommit = useCallback((value: number[]) => {
-      if (!canControl || !isPlayerReady.current) return;
-      const newTime = value[0];
-      try { 
-          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true); 
-          else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
-      } catch(e) {}
-      onPlayerStateChange({ seekTime: newTime });
-      setTimeout(() => { isSeekingRef.current = false; }, 200);
-  }, [canControl, onPlayerStateChange]);
-  
-  const handleVolumeChange = useCallback((newVolume: number[]) => {
-    const vol = newVolume[0];
-    setVolume(vol);
-    setCachedState('global', 'volume', vol);
-    try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') ytPlayerRef.current.setVolume(vol * 100);
-        else if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
-    } catch (e) {}
-  }, []);
-  
-  const handleQualityChange = useCallback((newQuality: string) => {
-    setQuality(newQuality);
-    setCachedState('global', 'quality', newQuality);
-  }, []);
+  // --- Callbacks for Video Player APIs ---
 
   const handlePlayerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (urlType === 'empty' || urlType === 'iframe') {
@@ -463,20 +472,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
   const onHtmlEnded = useCallback(() => { if (canControl) onVideoEnded(); }, [canControl, onVideoEnded]);
 
-  const formatTime = useCallback((seconds: number) => {
-    if (isNaN(seconds) || seconds < 0) return '00:00';
-    const date = new Date(0);
-    date.setSeconds(seconds);
-    const hasHours = date.getUTCHours() > 0;
-    return date.toISOString().substr(hasHours ? 11 : 14, hasHours ? 8 : 5);
-  }, []);
-
-  const VolumeIcon = useMemo(() => {
-    if (volume === 0) return VolumeX;
-    if (volume < 0.5) return Volume1;
-    return Volume2;
-  }, [volume]);
-
   const onMouseMove = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     setShowControls(true);
@@ -487,6 +482,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     setShowControls(false);
   }, []);
+
+  const VolumeIcon = useMemo(() => {
+    if (volume === 0) return VolumeX;
+    if (volume < 0.5) return Volume1;
+    return Volume2;
+  }, [volume]);
 
   const renderFeedback = () => {
     if (!feedback.visible) return null;
