@@ -592,3 +592,44 @@ export const purchaseCoins = async (username: string, packageId: string, coinsTo
         return updatedUser.coins;
     });
 };
+
+/**
+ * Deletes a user account securely after verifying their password.
+ * Cleans up the user node, presence, and friend relationships.
+ */
+export const deleteUserAccount = async (name: string, passwordAttempt: string) => {
+    const userRef = getUserRef(database, name);
+    const snapshot = await get(userRef);
+    if (!snapshot.exists()) throw new Error('المستخدم غير موجود.');
+
+    const userData = snapshot.val() as AppUser;
+    
+    // Verify password using the same hashing logic as login
+    if (userData.password) {
+        const hashedAttempt = await simpleHash(passwordAttempt);
+        if (userData.password !== hashedAttempt) {
+            throw new Error('كلمة المرور غير صحيحة.');
+        }
+    } else if (passwordAttempt !== '') {
+        // Handle legacy accounts if any exist with empty passwords
+        throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة.');
+    }
+
+    const updates: { [key: string]: any } = {};
+    
+    // 1. Mark user node for deletion
+    updates[`users/${name}`] = null;
+    
+    // 2. Mark presence node for deletion
+    updates[`presence/${name}`] = null;
+    
+    // 3. Cleanup: remove this user from all their friends' friend lists
+    if (userData.friends) {
+        Object.keys(userData.friends).forEach(friendName => {
+            updates[`users/${friendName}/friends/${name}`] = null;
+        });
+    }
+    
+    // Perform all deletions in one atomic update
+    await update(ref(database), updates);
+};

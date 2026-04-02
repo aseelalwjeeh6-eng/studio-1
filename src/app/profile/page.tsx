@@ -6,16 +6,17 @@ import { useEffect, useState, useTransition, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages, ImagePlaceholder } from '@/lib/placeholder-images';
-import { User as UserIcon, Loader2, CheckCircle, Image as ImageIcon, Sparkles, Wand2, User, Wallpaper, Trash2, Coins } from 'lucide-react';
+import { User as UserIcon, Loader2, CheckCircle, Image as ImageIcon, Sparkles, Wand2, User, Wallpaper, Trash2, Coins, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import { upsertUser, getUserData } from '@/lib/firebase-service';
+import { upsertUser, getUserData, deleteUserAccount } from '@/lib/firebase-service';
 import { generateAvatar } from '@/ai/flows/generate-avatar-flow';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AppUser } from '@/lib/firebase-service';
 import { Separator } from '@/components/ui/separator';
 import CoinManagementDialog from '@/components/profile/CoinManagementDialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
 export default function ProfilePage() {
   const { user, setUser, isLoaded } = useUserSession();
@@ -30,6 +31,12 @@ export default function ProfilePage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const [isCoinManagementOpen, setIsCoinManagementOpen] = useState(false);
+
+  // Account Deletion States
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
 
   useEffect(() => {
@@ -112,6 +119,30 @@ export default function ProfilePage() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user || !deletePassword.trim()) {
+        setDeleteError('يرجى إدخال كلمة المرور لتأكيد الحذف.');
+        return;
+    }
+    
+    setDeleteError('');
+    setIsDeleting(true);
+    
+    try {
+        await deleteUserAccount(user.name, deletePassword);
+        
+        // Success actions
+        window.alert('تم حذف حسابك بنجاح. سنفتقدك!');
+        setIsDeleteDialogOpen(false);
+        setUser(null); // Logout session
+        router.push('/'); // Redirect to landing
+    } catch (error: any) {
+        setDeleteError(error.message || 'فشلت عملية الحذف. يرجى التأكد من كلمة المرور.');
+    } finally {
+        setIsDeleting(false);
+    }
+  };
+
 
   const currentAvatarDetails = [...generatedAvatars, ...PlaceHolderImages].find(p => p.id === user?.avatarId) ?? PlaceHolderImages.find(p => p.id === 'avatar1');
   
@@ -139,7 +170,7 @@ export default function ProfilePage() {
 
   return (
     <>
-    <div className="flex flex-col items-center justify-center pt-8 gap-12">
+    <div className="flex flex-col items-center justify-center pt-8 pb-12 gap-12">
       <Card className="w-full max-w-sm bg-card/50 backdrop-blur-lg border-accent/20 text-center shadow-lg">
         <CardHeader className="flex flex-col items-center">
           <Avatar className="w-32 h-32 border-4 border-accent mb-4">
@@ -309,7 +340,89 @@ export default function ProfilePage() {
             </div>
         </CardContent>
       </Card>
+
+      {/* Danger Zone: Account Deletion */}
+      <Card className="w-full max-w-4xl bg-card/50 backdrop-blur-lg border-destructive/20 shadow-lg border-t-4 border-t-destructive/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="w-6 h-6" />
+            <span>منطقة الخطر</span>
+          </CardTitle>
+          <CardDescription>
+            هذا القسم يحتوي على إجراءات لا يمكن التراجع عنها. يرجى توخي الحذر.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-center sm:text-right">
+                <h4 className="font-bold text-foreground">حذف الحساب نهائياً</h4>
+                <p className="text-sm text-muted-foreground">سيتم حذف كافة بياناتك، صورك الرمزية، كوينزاتك، وأصدقائك للأبد.</p>
+            </div>
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={() => setIsDeleteDialogOpen(true)}>
+                <Trash2 className="me-2 h-4 w-4" />
+                حذف حسابي
+            </Button>
+        </CardContent>
+      </Card>
     </div>
+
+    {/* Delete Confirmation Dialog */}
+    <Dialog open={isDeleteDialogOpen} onOpenChange={(open) => {
+        setIsDeleteDialogOpen(open);
+        if(!open) {
+            setDeletePassword('');
+            setDeleteError('');
+        }
+    }}>
+        <DialogContent className="max-w-md bg-card border-destructive/30">
+            <DialogHeader>
+                <DialogTitle className="text-2xl text-destructive flex items-center gap-2">
+                    <Trash2 className="w-6 h-6" />
+                    تأكيد حذف الحساب
+                </DialogTitle>
+                <DialogDescription className="text-base pt-2">
+                    أنت على وشك حذف حسابك نهائياً. يرجى إدخال كلمة المرور الخاصة بك لتأكيد هذا الإجراء.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">كلمة المرور</label>
+                    <Input 
+                        type="password"
+                        placeholder="أدخل كلمة المرور هنا..."
+                        value={deletePassword}
+                        onChange={(e) => setDeletePassword(e.target.value)}
+                        className="h-12 bg-input/50 text-center text-lg focus:ring-destructive border-destructive/20"
+                        autoFocus
+                    />
+                </div>
+                {deleteError && (
+                    <div className="p-3 rounded bg-destructive/10 border border-destructive/20 text-destructive text-sm text-center font-medium">
+                        {deleteError}
+                    </div>
+                )}
+            </div>
+            <DialogFooter className="flex flex-col sm:flex-row gap-3">
+                <Button 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={() => setIsDeleteDialogOpen(false)}
+                    disabled={isDeleting}
+                >
+                    إلغاء التراجع
+                </Button>
+                <Button 
+                    variant="destructive" 
+                    className="w-full" 
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting || !deletePassword.trim()}
+                >
+                    {isDeleting ? <Loader2 className="animate-spin me-2 h-4 w-4" /> : <Trash2 className="me-2 h-4 w-4" />}
+                    حذف الحساب نهائياً
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
     <CoinManagementDialog 
         isOpen={isCoinManagementOpen} 
         onOpenChange={setIsCoinManagementOpen} 
