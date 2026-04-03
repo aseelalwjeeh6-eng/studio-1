@@ -135,7 +135,7 @@ const Player = ({
     setVolume(v);
     setCachedState('global', 'volume', v);
     if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-        ytPlayerRef.current.setVolume(v * 100);
+        try { ytPlayerRef.current.setVolume(v * 100); } catch(e) {}
     }
     resetControlsTimeout();
   };
@@ -181,19 +181,19 @@ const Player = ({
         if (playerStatus === 3) return;
 
         if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
-          ytPlayerRef.current.playVideo();
+          try { ytPlayerRef.current.playVideo(); } catch(e) {}
         } else if (!playerState.isPlaying && playerStatus === 1) {
-          ytPlayerRef.current.pauseVideo();
+          try { ytPlayerRef.current.pauseVideo(); } catch(e) {}
         }
 
         if (drift > SYNC_THRESHOLD) {
-          ytPlayerRef.current.seekTo(expected, true);
+          try { ytPlayerRef.current.seekTo(expected, true); } catch(e) {}
         } else if (drift > 0.5 && playerState.isPlaying) {
           const targetRate = playerState.playbackRate || 1;
           const microAdjust = expected > actual ? 1.05 : 0.95;
-          ytPlayerRef.current.setPlaybackRate(targetRate * microAdjust);
+          try { ytPlayerRef.current.setPlaybackRate(targetRate * microAdjust); } catch(e) {}
         } else {
-          ytPlayerRef.current.setPlaybackRate(playerState.playbackRate || 1);
+          try { ytPlayerRef.current.setPlaybackRate(playerState.playbackRate || 1); } catch(e) {}
         }
 
         setProgress(actual);
@@ -208,8 +208,10 @@ const Player = ({
       if (document.visibilityState === 'visible' && isReadyRef.current && playerState) {
         const expected = getExpectedTime();
         if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
-            ytPlayerRef.current.seekTo(expected, true);
-            if (playerState.isPlaying) ytPlayerRef.current.playVideo();
+            try {
+                ytPlayerRef.current.seekTo(expected, true);
+                if (playerState.isPlaying) ytPlayerRef.current.playVideo();
+            } catch(e) {}
         }
       }
     };
@@ -222,11 +224,13 @@ const Player = ({
     isReadyRef.current = true;
     setVideoError(null);
     setDuration(event.target.getDuration());
-    event.target.setVolume(volume * 100);
+    try { event.target.setVolume(volume * 100); } catch(e) {}
     
     const startAt = getExpectedTime();
-    event.target.seekTo(startAt, true);
-    if (playerState?.isPlaying) event.target.playVideo();
+    try {
+        event.target.seekTo(startAt, true);
+        if (playerState?.isPlaying) event.target.playVideo();
+    } catch(e) {}
   };
 
   const onError = (event: any) => {
@@ -296,7 +300,7 @@ const Player = ({
               <AlertCircle className="w-16 h-16 text-destructive mb-4 animate-pulse" />
               <h3 className="text-xl font-bold text-white mb-2">خطأ في التشغيل</h3>
               <p className="text-muted-foreground mb-6 max-w-md">{videoError}</p>
-              {canControl && <Button onClick={onSearchClick} variant="outline"><RefreshCw className="me-2"/>اختيار فيديو آخر</Button>}
+              {canControl && <Button onClick={onSearchClick} variant="outline" className="border-accent text-accent hover:bg-accent/10"><RefreshCw className="me-2"/>اختيار فيديو آخر</Button>}
             </div>
           )}
         </>
@@ -304,7 +308,7 @@ const Player = ({
         <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-4 bg-gradient-to-b from-secondary/20 to-black">
           <Film className="w-16 h-16 opacity-20 animate-pulse" />
           <p className="text-lg font-headline">شاشة السينما تنتظر اختيار فيديو...</p>
-          {canControl && <Button onClick={onSearchClick} variant="outline" className="hover:bg-accent hover:text-accent-foreground transition-all"><Search className="me-2"/>بحث عن فيديو</Button>}
+          {canControl && <Button onClick={onSearchClick} variant="outline" className="border-accent text-accent hover:bg-accent/10 transition-all"><Search className="me-2"/>بحث عن فيديو</Button>}
         </div>
       )}
 
@@ -364,7 +368,7 @@ const Player = ({
                     value={[progress]} 
                     max={duration || 100} 
                     onValueChange={(v) => { if(canControl) setProgress(v[0]); resetControlsTimeout(); }}
-                    onValueCommit={(v) => { if(canControl) { ignoreSyncUntilRef.current = Date.now() + 2000; ytPlayerRef.current?.seekTo(v[0], true); onPlayerStateChange({ seekTime: v[0], timestamp: getServerTime() }); } }}
+                    onValueCommit={(v) => { if(canControl) { ignoreSyncUntilRef.current = Date.now() + 2000; try { ytPlayerRef.current?.seekTo(v[0], true); } catch(e) {} onPlayerStateChange({ seekTime: v[0], timestamp: getServerTime() }); } }}
                     className="flex-grow cursor-pointer"
                     disabled={!canControl}
                 />

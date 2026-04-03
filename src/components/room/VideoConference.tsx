@@ -18,7 +18,7 @@ export default function VideoConference() {
     { onlyPinned: false },
   );
 
-  if (!tracks || tracks.length === 0) {
+  if (!tracks) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full bg-black/20 rounded-lg backdrop-blur-sm p-8 text-center">
         <div className="relative mb-4">
