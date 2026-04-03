@@ -33,8 +33,8 @@ interface PlayerProps {
   serverTimeOffset: number;
 }
 
-const SYNC_THRESHOLD = 3.5; // ثواني لتصحيح القفز الصعب
-const LOCAL_ACTION_COOLDOWN = 3000; // فترة سماح 3 ثوانٍ لمنع الارتداد للصفر
+const SYNC_THRESHOLD = 3.5; 
+const LOCAL_ACTION_COOLDOWN = 3000; 
 
 const Player = ({
   videoUrl,
@@ -59,10 +59,8 @@ const Player = ({
   const ignoreSyncUntilRef = useRef(0);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // مساعد: الحصول على توقيت الخادم الموحد
   const getServerTime = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
-  // مساعد: حساب الموقع المتوقع للفيديو في السحابة
   const getExpectedTime = useCallback(() => {
     if (!playerState) return 0;
     const now = getServerTime();
@@ -77,10 +75,10 @@ const Player = ({
     setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
   };
 
-  // تعريف دوال التحكم قبل استخدامها في useEffect
   const togglePlay = useCallback(async () => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
     try {
+      if (typeof ytPlayerRef.current.getPlayerState !== 'function') return;
       const playerStatus = await ytPlayerRef.current.getPlayerState();
       const isCurrentlyPlaying = playerStatus === 1;
       const nextState = !isCurrentlyPlaying;
@@ -103,6 +101,7 @@ const Player = ({
   const seekBy = useCallback(async (amount: number) => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
     try {
+      if (typeof ytPlayerRef.current.getCurrentTime !== 'function') return;
       const currentTime = await ytPlayerRef.current.getCurrentTime();
       const nextTime = Math.max(0, Math.min(duration, currentTime + amount));
       
@@ -121,34 +120,33 @@ const Player = ({
     const v = val[0];
     setVolume(v);
     setCachedState('global', 'volume', v);
-    if (ytPlayerRef.current) ytPlayerRef.current.setVolume(v * 100);
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+        ytPlayerRef.current.setVolume(v * 100);
+    }
   };
 
-  // المزامنة السحابية (Elastic Sync)
   useEffect(() => {
     if (!ytPlayerRef.current || !isReadyRef.current || !playerState) return;
 
     const syncInterval = setInterval(async () => {
-      // 1. درع الحماية من التغذية الراجعة (يمنع الارتداد للصفر)
       if (Date.now() < ignoreSyncUntilRef.current) return;
 
       try {
+        if (!ytPlayerRef.current || typeof ytPlayerRef.current.getPlayerState !== 'function') return;
+        
         const expected = getExpectedTime();
-        const actual = await ytPlayerRef.current?.getCurrentTime() || 0;
+        const actual = await ytPlayerRef.current.getCurrentTime() || 0;
         const drift = Math.abs(expected - actual);
-        const playerStatus = await ytPlayerRef.current?.getPlayerState();
+        const playerStatus = await ytPlayerRef.current.getPlayerState();
 
-        // 2. المزامنة بذكاء أثناء التخزين المؤقت
         if (playerStatus === 3) return;
 
-        // 3. مزامنة حالة التشغيل
         if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
           ytPlayerRef.current.playVideo();
         } else if (!playerState.isPlaying && playerStatus === 1) {
           ytPlayerRef.current.pauseVideo();
         }
 
-        // 4. تصحيح الانزراف (Hard & Soft Sync)
         if (drift > SYNC_THRESHOLD) {
           ytPlayerRef.current.seekTo(expected, true);
         } else if (drift > 0.5 && playerState.isPlaying) {
@@ -160,19 +158,20 @@ const Player = ({
         }
 
         setProgress(actual);
-      } catch (e) { /* تجاهل أخطاء الـ API المؤقتة */ }
+      } catch (e) { }
     }, 1000);
 
     return () => clearInterval(syncInterval);
   }, [playerState, getExpectedTime]);
 
-  // استعادة التزامن عند العودة للنافذة
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible' && isReadyRef.current && playerState) {
         const expected = getExpectedTime();
-        ytPlayerRef.current?.seekTo(expected, true);
-        if (playerState.isPlaying) ytPlayerRef.current?.playVideo();
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+            ytPlayerRef.current.seekTo(expected, true);
+            if (playerState.isPlaying) ytPlayerRef.current.playVideo();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
