@@ -118,6 +118,8 @@ const RoomHeader = ({
             navigator.clipboard.writeText(roomId).then(() => {
                 setIsCopied(true);
                 setTimeout(() => setIsCopied(false), 2000);
+            }).catch(err => {
+                console.warn('Clipboard copy failed:', err);
             });
         }
     }, [roomId]);
