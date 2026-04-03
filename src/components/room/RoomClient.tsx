@@ -1,3 +1,4 @@
+'use server';
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
@@ -10,7 +11,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check } from 'lucide-react';
+import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -65,7 +66,7 @@ const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChan
         <div className="flex flex-col items-center gap-4">
             <div className="flex gap-3">
                 {Array.from({ length: pinLength }).map((_, i) => (
-                    <div key={i} className={`w-10 h-12 rounded-md border-2 flex items-center justify-center text-2xl ${pin.length > i ? 'bg-accent/30 border-accent' : 'bg-input'}`}>
+                    <div key={i} className={cn("w-10 h-12 rounded-md border-2 flex items-center justify-center text-2xl", pin.length > i ? 'bg-accent/30 border-accent' : 'bg-input')}>
                        {pin.length > i ? '•' : ''}
                     </div>
                 ))}
