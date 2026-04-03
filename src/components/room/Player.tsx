@@ -54,7 +54,7 @@ const Player = ({
   const [showControls, setShowControls] = useState(false);
   const [volume, setVolume] = useState(() => getCachedState('global', 'volume', 0.8));
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: 'play' | 'pause' | 'forward' | 'backward' | '', visible: boolean }>({ type: 'play', visible: false });
+  const [feedback, setFeedback] = useState<{ type: 'play' | 'pause' | 'forward' | 'backward' | '', visible: boolean }>({ type: '', visible: false });
 
   const ytPlayerRef = useRef<YouTubePlayer | null>(null);
   const isReadyRef = useRef(false);
@@ -92,8 +92,9 @@ const Player = ({
       const isCurrentlyPlaying = playerStatus === 1;
       const nextState = !isCurrentlyPlaying;
       
-      // Get current actual time to prevent resetting
-      const currentTime = await ytPlayerRef.current.getCurrentTime();
+      const currentTime = typeof ytPlayerRef.current.getCurrentTime === 'function' 
+        ? await ytPlayerRef.current.getCurrentTime() 
+        : playerState?.seekTime || 0;
 
       ignoreSyncUntilRef.current = Date.now() + LOCAL_ACTION_COOLDOWN;
       
@@ -108,7 +109,7 @@ const Player = ({
       triggerFeedback(nextState ? 'play' : 'pause');
       resetControlsTimeout();
     } catch (e) { console.error("TogglePlay Error:", e); }
-  }, [canControl, onPlayerStateChange, getServerTime, resetControlsTimeout]);
+  }, [canControl, onPlayerStateChange, getServerTime, resetControlsTimeout, playerState]);
 
   const seekBy = useCallback(async (amount: number) => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
@@ -143,29 +144,26 @@ const Player = ({
     const now = Date.now();
     const clickDelay = now - lastClickRef.current;
     
-    // Calculate click position for double tap seek
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ('clientX' in e ? e.clientX : (e as any).touches[0].clientX) - rect.left;
+    const clientX = 'clientX' in e ? e.clientX : (e as any).touches[0].clientX;
+    const x = clientX - rect.left;
     const width = rect.width;
 
     if (clickDelay < 300) {
-      // Double click detected
       if (canControl) {
-        if (x < width * 0.4) seekBy(-10); // Left side
-        else if (x > width * 0.6) seekBy(10); // Right side
-        else resetControlsTimeout(); // Middle
+        if (x < width * 0.4) seekBy(-10);
+        else if (x > width * 0.6) seekBy(10);
+        else resetControlsTimeout();
       } else {
         resetControlsTimeout();
       }
-      lastClickRef.current = 0; // Reset to prevent triple-click issues
+      lastClickRef.current = 0;
     } else {
-      // Single click
       resetControlsTimeout();
       lastClickRef.current = now;
     }
   };
 
-  // Sync effect
   useEffect(() => {
     if (!ytPlayerRef.current || !isReadyRef.current || !playerState) return;
 
@@ -180,7 +178,6 @@ const Player = ({
         const drift = Math.abs(expected - actual);
         const playerStatus = await ytPlayerRef.current.getPlayerState();
 
-        // Buffering protection
         if (playerStatus === 3) return;
 
         if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
@@ -206,7 +203,6 @@ const Player = ({
     return () => clearInterval(syncInterval);
   }, [playerState, getExpectedTime]);
 
-  // Visibility Sync
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible' && isReadyRef.current && playerState) {

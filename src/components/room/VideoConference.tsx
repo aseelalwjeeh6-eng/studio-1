@@ -8,10 +8,8 @@ import {
 } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { Loader2, Video } from 'lucide-react';
-import { useMemo } from 'react';
 
 export default function VideoConference() {
-  // استخدام useTracks للحصول على كافة المسارات المرئية (كاميرا + مشاركة شاشة)
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -20,7 +18,6 @@ export default function VideoConference() {
     { onlyPinned: false },
   );
 
-  // التحقق من وجود مشاركين (أو مسارات) لتجنب أخطاء الطول
   if (!tracks || tracks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full bg-black/20 rounded-lg backdrop-blur-sm p-8 text-center">
