@@ -13,6 +13,7 @@ import {
   Rewind,
   AlertCircle,
   RefreshCw,
+  XCircle,
 } from 'lucide-react';
 import { PlayerState } from './RoomClient';
 import { Slider } from '../ui/slider';
@@ -35,6 +36,7 @@ interface PlayerProps {
 
 const SYNC_THRESHOLD = 3.5; 
 const LOCAL_ACTION_COOLDOWN = 3000; 
+const CONTROLS_HIDE_TIMEOUT = 5000; // 5 seconds as requested
 
 const Player = ({
   videoUrl,
@@ -75,6 +77,12 @@ const Player = ({
     setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
   };
 
+  const resetControlsTimeout = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), CONTROLS_HIDE_TIMEOUT);
+  }, []);
+
   const togglePlay = useCallback(async () => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
     try {
@@ -95,8 +103,9 @@ const Player = ({
         timestamp: getServerTime()
       });
       triggerFeedback(nextState ? 'play' : 'pause');
+      resetControlsTimeout();
     } catch (e) { console.error("TogglePlay Error:", e); }
-  }, [canControl, onPlayerStateChange, getServerTime]);
+  }, [canControl, onPlayerStateChange, getServerTime, resetControlsTimeout]);
 
   const seekBy = useCallback(async (amount: number) => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
@@ -113,8 +122,9 @@ const Player = ({
         timestamp: getServerTime()
       });
       triggerFeedback(amount > 0 ? 'forward' : 'backward');
+      resetControlsTimeout();
     } catch (e) { console.error("Seek Error:", e); }
-  }, [canControl, duration, onPlayerStateChange, getServerTime]);
+  }, [canControl, duration, onPlayerStateChange, getServerTime, resetControlsTimeout]);
 
   const handleVolumeChange = (val: number[]) => {
     const v = val[0];
@@ -123,8 +133,16 @@ const Player = ({
     if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
         ytPlayerRef.current.setVolume(v * 100);
     }
+    resetControlsTimeout();
   };
 
+  const handleCloseVideo = useCallback(() => {
+    if (canControl) {
+      onSetVideo('');
+    }
+  }, [canControl, onSetVideo]);
+
+  // Sync effect
   useEffect(() => {
     if (!ytPlayerRef.current || !isReadyRef.current || !playerState) return;
 
@@ -139,6 +157,7 @@ const Player = ({
         const drift = Math.abs(expected - actual);
         const playerStatus = await ytPlayerRef.current.getPlayerState();
 
+        // Buffering protection
         if (playerStatus === 3) return;
 
         if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
@@ -164,6 +183,7 @@ const Player = ({
     return () => clearInterval(syncInterval);
   }, [playerState, getExpectedTime]);
 
+  // Background/Visibility Sync
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible' && isReadyRef.current && playerState) {
@@ -225,7 +245,8 @@ const Player = ({
   return (
     <div 
       className="relative w-full aspect-video bg-black rounded-lg overflow-hidden group shadow-2xl border border-white/5"
-      onMouseMove={() => { setShowControls(true); if(controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000); }}
+      onMouseMove={resetControlsTimeout}
+      onClick={resetControlsTimeout}
     >
       {videoId ? (
         <>
@@ -279,37 +300,50 @@ const Player = ({
       )}
 
       {videoId && !videoError && (
-        <div className={cn("absolute inset-0 z-20 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-transparent to-black/60 transition-opacity duration-500", showControls ? "opacity-100" : "opacity-0")}>
+        <div className={cn("absolute inset-0 z-20 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-transparent to-black/60 transition-opacity duration-500", showControls ? "opacity-100" : "opacity-0 pointer-events-none")}>
           <div className="flex justify-between items-start">
             <div className="max-w-[70%] bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-sm text-white truncate border border-white/10 flex items-center gap-2">
               <Film className="w-4 h-4 text-accent" />
               {videoDetails?.snippet.title || "جاري التشغيل..."}
             </div>
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-white font-bold uppercase tracking-wider">سحابة أصيل متصلة</span>
+            <div className="flex items-center gap-2">
+                {canControl && (
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={(e) => { e.stopPropagation(); handleCloseVideo(); }}
+                        className="text-white hover:text-destructive hover:bg-destructive/20 transition-colors"
+                        title="إغلاق الفيديو نهائياً"
+                    >
+                        <XCircle className="w-6 h-6" />
+                    </Button>
+                )}
+                <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-[10px] text-white font-bold uppercase tracking-wider">سحابة أصيل متصلة</span>
+                </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-center gap-10">
+          <div className="flex items-center justify-center gap-10 pointer-events-auto">
             {canControl && (
               <>
-                <Button variant="ghost" size="icon" onClick={() => seekBy(-10)} className="text-white hover:bg-white/20 transition-transform hover:scale-110"><Rewind className="w-8 h-8" /></Button>
-                <Button variant="ghost" size="icon" onClick={togglePlay} className="text-white hover:bg-white/20 w-20 h-20 rounded-full transition-transform hover:scale-110">
+                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); seekBy(-10); }} className="text-white hover:bg-white/20 transition-transform hover:scale-110"><Rewind className="w-8 h-8" /></Button>
+                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="text-white hover:bg-white/20 w-20 h-20 rounded-full transition-transform hover:scale-110">
                   {playerState?.isPlaying ? <Pause className="w-12 h-12 fill-white" /> : <Play className="w-12 h-12 fill-white ms-1" />}
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => seekBy(10)} className="text-white hover:bg-white/20 transition-transform hover:scale-110"><FastForward className="w-8 h-8" /></Button>
+                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); seekBy(10); }} className="text-white hover:bg-white/20 transition-transform hover:scale-110"><FastForward className="w-8 h-8" /></Button>
               </>
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 pointer-events-auto">
             <div className="flex items-center gap-4 text-white text-xs font-mono bg-black/40 p-2 rounded-lg backdrop-blur-sm border border-white/5">
                 <span>{formatTime(progress)}</span>
                 <Slider 
                     value={[progress]} 
                     max={duration || 100} 
-                    onValueChange={(v) => { if(canControl) setProgress(v[0]); }}
+                    onValueChange={(v) => { if(canControl) setProgress(v[0]); resetControlsTimeout(); }}
                     onValueCommit={(v) => { if(canControl) { ignoreSyncUntilRef.current = Date.now() + 2000; ytPlayerRef.current?.seekTo(v[0], true); onPlayerStateChange({ seekTime: v[0], timestamp: getServerTime() }); } }}
                     className="flex-grow cursor-pointer"
                     disabled={!canControl}
@@ -317,8 +351,8 @@ const Player = ({
                 <span>{formatTime(duration)}</span>
                 
                 <Popover>
-                <PopoverTrigger asChild><Button variant="ghost" size="icon" className="text-white hover:bg-white/10"><Volume2 className="w-5 h-5"/></Button></PopoverTrigger>
-                <PopoverContent className="w-12 p-3 bg-black/90 border-white/10 backdrop-blur-xl"><Slider orientation="vertical" value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} className="h-32"/></PopoverContent>
+                <PopoverTrigger asChild><Button variant="ghost" size="icon" className="text-white hover:bg-white/10" onClick={(e) => e.stopPropagation()}><Volume2 className="w-5 h-5"/></Button></PopoverTrigger>
+                <PopoverContent className="w-12 p-3 bg-black/90 border-white/10 backdrop-blur-xl" onClick={(e) => e.stopPropagation()}><Slider orientation="vertical" value={[volume]} max={1} step={0.05} onValueChange={handleVolumeChange} className="h-32"/></PopoverContent>
                 </Popover>
             </div>
           </div>
