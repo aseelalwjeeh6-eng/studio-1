@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
@@ -74,8 +75,8 @@ const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChan
                     <Button key={num} variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick(num.toString())}>{num}</Button>
                 ))}
                 <div />
-                <Button variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick('0')}>0</Button>
-                <Button variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick('backspace')}>⌫</Button>
+                <Button key="0" variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick('0')}>0</Button>
+                <Button key="back" variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick('backspace')}>⌫</Button>
             </div>
         </div>
     );
@@ -151,7 +152,7 @@ const RoomHeader = ({
                         )}
                         <DropdownMenuMenuItem onClick={onLeaveRoom} className="text-destructive">
                             <LogOut className="me-2" /> مغادرة الغرفة
-                        </DropdownMenuItem>
+                        </DropdownMenuMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -325,7 +326,10 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
 
         subscribe(`rooms/${roomId}/playerState`, snap => {
             const val = snap.val();
-            if (val) setPlayerState(val);
+            if (val) {
+                setPlayerState(val);
+                setCachedState(roomId, 'playerState', val);
+            }
         });
 
         subscribe(`rooms/${roomId}/host`, snap => {

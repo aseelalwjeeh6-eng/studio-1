@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -70,7 +71,7 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   const isBufferingRef = useRef(false); 
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // حماية ضد حلقات المزامنة: تجاهل المزامنة الخارجية لمدة 3 ثوانٍ بعد أي إجراء محلي
+  // حماية ضد حلقات المزامنة: تجاهل المزامنة الخارجية لمدة 3 ثوانٍ بعد أي إجراء محلي لمنع الارتداد للصفر
   const lastLocalActionTime = useRef<number>(0);
 
   const [progress, setProgress] = useState(0);
@@ -86,8 +87,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   
   const lastClickTimeRef = useRef(0);
   const lastClickSideRef = useRef<'left' | 'right' | 'center' | null>(null);
-
-  // --- دوال التحكم المساعدة (يجب تعريفها قبل الاستخدام في useEffect) ---
 
   const getServerTimeNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
@@ -194,8 +193,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       setTimeout(() => { isSeekingRef.current = false; }, 200);
   }, [canControl, handlePlayerStateChangeWithGuard]);
 
-  // --- حلقة المزامنة الأساسية ---
-
   const syncPlayerState = useCallback(() => {
     // تجاهل المزامنة الخارجية إذا كان المستخدم قد تفاعل محلياً مؤخراً (يمنع الارتداد للصفر)
     if (Date.now() - lastLocalActionTime.current < 3000) return;
@@ -225,7 +222,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         } catch(e) {}
     }
 
-    const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
+    const serverTimeNow = getServerTimeNow();
+    const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (serverTimeNow - (playerState.timestamp || serverTimeNow)) / 1000 : 0);
     
     if (duration > 0 && serverTime > duration + 5) { if (canControl) onVideoEnded(); return; }
     
@@ -274,8 +272,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     } catch (e) { isInternalUpdate.current = false; }
   }, [playerState, duration, urlType, getServerTimeNow, canControl, onVideoEnded]);
 
-  // --- الـ Effects والمستمعين ---
-
   useEffect(() => { isPlayerReady.current = false; ytPlayerRef.current = null; }, [videoId, quality]);
 
   useEffect(() => {
@@ -309,7 +305,8 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     let progressInterval: NodeJS.Timeout | null = null;
     const updateProgress = () => {
         if (!playerState || !duration || duration === 0 || isSeekingRef.current) return;
-        const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (getServerTimeNow() - (playerState.timestamp || getServerTimeNow())) / 1000 : 0);
+        const now = getServerTimeNow();
+        const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (now - (playerState.timestamp || now)) / 1000 : 0);
         setProgress(Math.max(0, Math.min(serverTime, duration)));
     };
     updateProgress();
