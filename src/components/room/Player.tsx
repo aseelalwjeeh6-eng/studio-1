@@ -35,8 +35,8 @@ interface PlayerProps {
 }
 
 const SYNC_THRESHOLD = 3.5; 
-const LOCAL_ACTION_COOLDOWN = 3000; 
-const CONTROLS_HIDE_TIMEOUT = 5000; // 5 seconds as requested
+const LOCAL_ACTION_COOLDOWN = 3500; 
+const CONTROLS_HIDE_TIMEOUT = 5000; 
 
 const Player = ({
   videoUrl,
@@ -54,12 +54,13 @@ const Player = ({
   const [showControls, setShowControls] = useState(false);
   const [volume, setVolume] = useState(() => getCachedState('global', 'volume', 0.8));
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: string; visible: boolean }>({ type: '', visible: false });
+  const [feedback, setFeedback] = useState<{ type: 'play' | 'pause' | 'forward' | 'backward' | '', visible: boolean }>({ type: 'play', visible: false });
 
   const ytPlayerRef = useRef<YouTubePlayer | null>(null);
   const isReadyRef = useRef(false);
   const ignoreSyncUntilRef = useRef(0);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastClickRef = useRef<number>(0);
 
   const getServerTime = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
@@ -72,7 +73,7 @@ const Player = ({
     return playerState.isPlaying ? Math.max(0, playerState.seekTime + actualElapsed) : playerState.seekTime;
   }, [playerState, getServerTime]);
 
-  const triggerFeedback = (type: string) => {
+  const triggerFeedback = (type: 'play' | 'pause' | 'forward' | 'backward') => {
     setFeedback({ type, visible: true });
     setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
   };
@@ -90,6 +91,8 @@ const Player = ({
       const playerStatus = await ytPlayerRef.current.getPlayerState();
       const isCurrentlyPlaying = playerStatus === 1;
       const nextState = !isCurrentlyPlaying;
+      
+      // Get current actual time to prevent resetting
       const currentTime = await ytPlayerRef.current.getCurrentTime();
 
       ignoreSyncUntilRef.current = Date.now() + LOCAL_ACTION_COOLDOWN;
@@ -136,11 +139,31 @@ const Player = ({
     resetControlsTimeout();
   };
 
-  const handleCloseVideo = useCallback(() => {
-    if (canControl) {
-      onSetVideo('');
+  const handleInteraction = (e: React.MouseEvent | React.TouchEvent) => {
+    const now = Date.now();
+    const clickDelay = now - lastClickRef.current;
+    
+    // Calculate click position for double tap seek
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ('clientX' in e ? e.clientX : (e as any).touches[0].clientX) - rect.left;
+    const width = rect.width;
+
+    if (clickDelay < 300) {
+      // Double click detected
+      if (canControl) {
+        if (x < width * 0.4) seekBy(-10); // Left side
+        else if (x > width * 0.6) seekBy(10); // Right side
+        else resetControlsTimeout(); // Middle
+      } else {
+        resetControlsTimeout();
+      }
+      lastClickRef.current = 0; // Reset to prevent triple-click issues
+    } else {
+      // Single click
+      resetControlsTimeout();
+      lastClickRef.current = now;
     }
-  }, [canControl, onSetVideo]);
+  };
 
   // Sync effect
   useEffect(() => {
@@ -183,7 +206,7 @@ const Player = ({
     return () => clearInterval(syncInterval);
   }, [playerState, getExpectedTime]);
 
-  // Background/Visibility Sync
+  // Visibility Sync
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible' && isReadyRef.current && playerState) {
@@ -246,8 +269,9 @@ const Player = ({
     <div 
       className="relative w-full aspect-video bg-black rounded-lg overflow-hidden group shadow-2xl border border-white/5"
       onMouseMove={resetControlsTimeout}
-      onClick={resetControlsTimeout}
     >
+      <div className="absolute inset-0 z-10 cursor-pointer" onClick={handleInteraction} />
+
       {videoId ? (
         <>
           <YouTube
@@ -311,8 +335,8 @@ const Player = ({
                     <Button 
                         variant="ghost" 
                         size="icon" 
-                        onClick={(e) => { e.stopPropagation(); handleCloseVideo(); }}
-                        className="text-white hover:text-destructive hover:bg-destructive/20 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onSetVideo(''); }}
+                        className="text-white hover:text-destructive hover:bg-destructive/20 transition-colors pointer-events-auto"
                         title="إغلاق الفيديو نهائياً"
                     >
                         <XCircle className="w-6 h-6" />
