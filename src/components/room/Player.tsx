@@ -9,7 +9,6 @@ import {
   Film,
   Pause,
   Volume2,
-  Settings,
   FastForward,
   Rewind,
   AlertCircle,
@@ -34,8 +33,8 @@ interface PlayerProps {
   serverTimeOffset: number;
 }
 
-const SYNC_THRESHOLD = 3; // ثواني
-const LOCAL_ACTION_COOLDOWN = 3000; // ميلي ثانية
+const SYNC_THRESHOLD = 3.5; // ثواني لتصحيح القفز الصعب
+const LOCAL_ACTION_COOLDOWN = 3000; // فترة سماح 3 ثوانٍ لمنع الارتداد للصفر
 
 const Player = ({
   videoUrl,
@@ -59,21 +58,17 @@ const Player = ({
   const isReadyRef = useRef(false);
   const ignoreSyncUntilRef = useRef(0);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSyncTimeRef = useRef(0);
 
-  // مساعد: الحصول على توقيت الخادم المتزامن
+  // مساعد: الحصول على توقيت الخادم الموحد
   const getServerTime = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
-  // مساعد: حساب أين يجب أن يكون الفيديو الآن
+  // مساعد: حساب الموقع المتوقع للفيديو في السحابة
   const getExpectedTime = useCallback(() => {
     if (!playerState) return 0;
     const now = getServerTime();
     const elapsedSinceUpdate = (now - (playerState.timestamp || now)) / 1000;
-    
-    // دعم سرعة التشغيل في الحساب
     const speed = playerState.playbackRate || 1;
     const actualElapsed = elapsedSinceUpdate * speed;
-
     return playerState.isPlaying ? Math.max(0, playerState.seekTime + actualElapsed) : playerState.seekTime;
   }, [playerState, getServerTime]);
 
@@ -82,12 +77,14 @@ const Player = ({
     setTimeout(() => setFeedback(prev => ({ ...prev, visible: false })), 800);
   };
 
+  // تعريف دوال التحكم قبل استخدامها في useEffect
   const togglePlay = useCallback(async () => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
     try {
-      const isCurrentlyPlaying = ytPlayerRef.current.getPlayerState() === 1;
+      const playerStatus = await ytPlayerRef.current.getPlayerState();
+      const isCurrentlyPlaying = playerStatus === 1;
       const nextState = !isCurrentlyPlaying;
-      const currentTime = ytPlayerRef.current.getCurrentTime();
+      const currentTime = await ytPlayerRef.current.getCurrentTime();
 
       ignoreSyncUntilRef.current = Date.now() + LOCAL_ACTION_COOLDOWN;
       
@@ -103,10 +100,10 @@ const Player = ({
     } catch (e) { console.error("TogglePlay Error:", e); }
   }, [canControl, onPlayerStateChange, getServerTime]);
 
-  const seekBy = useCallback((amount: number) => {
+  const seekBy = useCallback(async (amount: number) => {
     if (!canControl || !ytPlayerRef.current || !isReadyRef.current) return;
     try {
-      const currentTime = ytPlayerRef.current.getCurrentTime();
+      const currentTime = await ytPlayerRef.current.getCurrentTime();
       const nextTime = Math.max(0, Math.min(duration, currentTime + amount));
       
       ignoreSyncUntilRef.current = Date.now() + LOCAL_ACTION_COOLDOWN;
@@ -120,66 +117,66 @@ const Player = ({
     } catch (e) { console.error("Seek Error:", e); }
   }, [canControl, duration, onPlayerStateChange, getServerTime]);
 
-  // المزامنة الذكية (Elastic Sync)
+  const handleVolumeChange = (val: number[]) => {
+    const v = val[0];
+    setVolume(v);
+    setCachedState('global', 'volume', v);
+    if (ytPlayerRef.current) ytPlayerRef.current.setVolume(v * 100);
+  };
+
+  // المزامنة السحابية (Elastic Sync)
   useEffect(() => {
     if (!ytPlayerRef.current || !isReadyRef.current || !playerState) return;
 
-    const syncInterval = setInterval(() => {
-      // 1. منع المزامنة أثناء فترة السماح بعد إجراء محلي
+    const syncInterval = setInterval(async () => {
+      // 1. درع الحماية من التغذية الراجعة (يمنع الارتداد للصفر)
       if (Date.now() < ignoreSyncUntilRef.current) return;
 
       try {
         const expected = getExpectedTime();
-        const actual = ytPlayerRef.current?.getCurrentTime() || 0;
+        const actual = await ytPlayerRef.current?.getCurrentTime() || 0;
         const drift = Math.abs(expected - actual);
-        const playerStatus = ytPlayerRef.current?.getPlayerState();
+        const playerStatus = await ytPlayerRef.current?.getPlayerState();
 
-        // 2. منع المزامنة إذا كان الفيديو في حالة "تخزين مؤقت" (Buffering = 3)
+        // 2. المزامنة بذكاء أثناء التخزين المؤقت
         if (playerStatus === 3) return;
 
         // 3. مزامنة حالة التشغيل
-        if (playerState.isPlaying && playerStatus !== 1) {
+        if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
           ytPlayerRef.current.playVideo();
         } else if (!playerState.isPlaying && playerStatus === 1) {
           ytPlayerRef.current.pauseVideo();
         }
 
-        // 4. مزامنة السرعة
-        const targetRate = playerState.playbackRate || 1;
-        if (ytPlayerRef.current.getPlaybackRate() !== targetRate) {
-          ytPlayerRef.current.setPlaybackRate(targetRate);
-        }
-
-        // 5. مزامنة التوقيت (قفزة صلبة)
+        // 4. تصحيح الانزراف (Hard & Soft Sync)
         if (drift > SYNC_THRESHOLD) {
           ytPlayerRef.current.seekTo(expected, true);
-        } 
-        // 6. مزامنة ناعمة (تعديل السرعة قليلاً للحاق بالركب)
-        else if (drift > 0.5 && playerState.isPlaying) {
+        } else if (drift > 0.5 && playerState.isPlaying) {
+          const targetRate = playerState.playbackRate || 1;
           const microAdjust = expected > actual ? 1.05 : 0.95;
           ytPlayerRef.current.setPlaybackRate(targetRate * microAdjust);
         } else {
-          ytPlayerRef.current.setPlaybackRate(targetRate);
+          ytPlayerRef.current.setPlaybackRate(playerState.playbackRate || 1);
         }
 
         setProgress(actual);
-      } catch (e) { /* تجاهل أخطاء الـ Widget المؤقتة */ }
+      } catch (e) { /* تجاهل أخطاء الـ API المؤقتة */ }
     }, 1000);
 
     return () => clearInterval(syncInterval);
   }, [playerState, getExpectedTime]);
 
-  // إعادة المزامنة عند عودة التركيز للنافذة
+  // استعادة التزامن عند العودة للنافذة
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const handleVisibility = async () => {
       if (document.visibilityState === 'visible' && isReadyRef.current && playerState) {
         const expected = getExpectedTime();
         ytPlayerRef.current?.seekTo(expected, true);
         if (playerState.isPlaying) ytPlayerRef.current?.playVideo();
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [playerState, getExpectedTime]);
 
   const onReady = (event: any) => {
@@ -195,18 +192,11 @@ const Player = ({
   };
 
   const onError = (event: any) => {
-    console.error("YouTube Player Error:", event.data);
+    console.error("YouTube Error:", event.data);
     let msg = "حدث خطأ في تشغيل الفيديو.";
-    if (event.data === 101 || event.data === 150) msg = "هذا الفيديو محظور من التشغيل في المواقع الأخرى أو في منطقتك.";
-    if (event.data === 2) msg = "معرف الفيديو غير صالح.";
+    if (event.data === 101 || event.data === 150) msg = "هذا الفيديو محظور من التشغيل في المواقع الأخرى.";
+    if (event.data === 2) msg = "معرف الفيديو غير صحيح.";
     setVideoError(msg);
-  };
-
-  const handleVolumeChange = (val: number[]) => {
-    const v = val[0];
-    setVolume(v);
-    setCachedState('global', 'volume', v);
-    if (ytPlayerRef.current) ytPlayerRef.current.setVolume(v * 100);
   };
 
   const videoId = useMemo(() => {
@@ -278,7 +268,6 @@ const Player = ({
         </div>
       )}
 
-      {/* تنبيهات الحالة */}
       {feedback.visible && (
         <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
           <div className="bg-black/60 p-8 rounded-full animate-in zoom-in duration-300 backdrop-blur-sm border border-white/10">
@@ -290,7 +279,6 @@ const Player = ({
         </div>
       )}
 
-      {/* عناصر التحكم المخصصة */}
       {videoId && !videoError && (
         <div className={cn("absolute inset-0 z-20 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-transparent to-black/60 transition-opacity duration-500", showControls ? "opacity-100" : "opacity-0")}>
           <div className="flex justify-between items-start">
