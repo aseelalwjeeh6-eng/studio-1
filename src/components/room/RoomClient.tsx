@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
@@ -215,7 +214,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const participants = useParticipants();
 
   const isHost = useMemo(() => user?.name === roomBasicInfo.hostName, [user?.name, roomBasicInfo.hostName]);
-  const isModerator = useMemo(() => roomBasicInfo.moderators.includes(user.name), [user.name, roomBasicInfo.moderators]);
+  const isModerator = useMemo(() => (roomBasicInfo.moderators || []).includes(user.name), [user.name, roomBasicInfo.moderators]);
   const canControl = useMemo(() => isHost || isModerator, [isHost, isModerator]);
 
   const viewers = useMemo(() => {
@@ -413,15 +412,15 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
       };
       update(ref(database), updates).catch(() => {});
     }
-  }, [canControl, roomId, playerState?.volume, playerState?.quality]);
+  }, [canControl, roomId, playerState]);
   
   const handlePlayerStateChange = useCallback((newState: Partial<PlayerState>) => {
     if (!canControl) return;
     runTransaction(ref(database, `rooms/${roomId}/playerState`), (curr: PlayerState | null) => {
         const c = curr || { isPlaying: false, seekTime: 0, volume: 0.8, quality: 'auto', timestamp: Date.now() };
         const updated = { ...c, ...newState };
-        const shouldStamp = (newState.isPlaying !== undefined && newState.isPlaying !== c.isPlaying) || newState.seekTime !== undefined;
-        return shouldStamp ? { ...updated, timestamp: serverTimestamp() } : updated;
+        // Force timestamp update on any critical state change
+        return { ...updated, timestamp: serverTimestamp() };
     }).catch(() => {});
   }, [canControl, roomId]);
 
@@ -492,7 +491,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
     <Dialog open={dialogs.invite} onOpenChange={(o) => setDialogs(p => ({...p, invite: o}))}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>دعوة أصدقاء</DialogTitle></DialogHeader><div className="space-y-3 max-h-80 overflow-y-auto mt-4">{friendData.friends.length > 0 ? friendData.friends.map(f => <div key={f.name} className="flex items-center justify-between p-2 rounded-lg bg-secondary/30"><div className="flex items-center gap-3"><Avatar className="h-10 w-10"><AvatarImage src={PlaceHolderImages.find(p => p.id === f.avatarId)?.imageUrl} /></Avatar><span className="font-semibold">{f.name}</span></div><Button size="sm" onClick={async () => { try { await sendRoomInvitation(user.name, f.name, roomId, roomBasicInfo.name); setFriendData(p => ({...p, invited: new Set(p.invited).add(f.name)})); } catch(e) {} }} disabled={friendData.invited.has(f.name)}>{friendData.invited.has(f.name) ? "تمت الدعوة" : "دعوة"}</Button></div>) : <p className="text-center text-muted-foreground py-4">لا يوجد أصدقاء.</p>}</div></DialogContent></Dialog>
     <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={(v) => onSetVideo(v)} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({...p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={dialogs.search} onOpenChange={(o) => setDialogs(p => ({...p, search: o}))}><DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0"><DialogHeader className="p-6 pb-4 border-b"><DialogTitle>البحث عن فيديو</DialogTitle></DialogHeader><div className="p-6 flex gap-4"><form onSubmit={(e) => { e.preventDefault(); performSearch(search.query); }} className="flex-1 flex gap-2"><Input placeholder="يوتيوب..." value={search.query} onChange={(e) => setSearch(p => ({...p, query: e.target.value}))} className="bg-input" /><Button type="submit">{search.isSearching ? <Loader2 className="animate-spin" /> : <Search />}</Button></form></div><div className="flex-grow overflow-y-auto px-6 pb-6">{search.results.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{search.results.map(v => <div key={v.id.videoId} className="group cursor-pointer" onClick={() => setPreview(p => ({...p, video: v}))}><div className="relative aspect-video rounded-lg overflow-hidden mb-2"><Image src={v.snippet.thumbnails.high.url} alt="V" fill className="object-cover" /></div><h3 className="font-semibold text-sm line-clamp-2">{v.snippet.title}</h3><Button onClick={(e) => { e.stopPropagation(); try { const newItem: PlaylistItem = { id: v.id.videoId, videoId: v.id.videoId, title: v.snippet.title, thumbnail: v.snippet.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(prev => ({ ...prev, recentlyAdded: new Set(prev.recentlyAdded).add(v.id.videoId) })); setTimeout(() => setPreview(prev => { const n = new Set(prev.recentlyAdded); n.delete(v.id.videoId); return { ...prev, recentlyAdded: n }; }), 2000); } catch(e) {} }} variant="secondary" size="sm" className="w-full mt-2">{preview.recentlyAdded.has(v.id.videoId) ? "تمت الإضافة" : "إضافة للقائمة"}</Button></div>)}</div>}</div></DialogContent></Dialog>
-    {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => { try { const newItem: PlaylistItem = { id: preview.video!.id.videoId, videoId: preview.video!.id.videoId, title: preview.video!.snippet.title, thumbnail: preview.video!.snippet.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(p => ({ ...p, video: null })); } catch(e) {} }} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...p, video: null})); setDialogs(p => ({...p, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
+    {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => { try { const newItem: PlaylistItem = { id: preview.video!.id.videoId, videoId: preview.video!.id.videoId, title: preview.video!.snippet.title, thumbnail: preview.video!.snippet.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(p => ({ ...prev, video: null })); } catch(e) {} }} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...prev, video: null})); setDialogs(p => ({...prev, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
 </div>
   );
 }
