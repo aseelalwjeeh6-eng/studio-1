@@ -105,7 +105,6 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, []);
 
   const handlePlayerStateChangeWithGuard = useCallback((newState: Partial<PlayerState>) => {
-      // تحديث توقيت آخر إجراء محلي لمنع الارتداد للصفر
       lastLocalActionTime.current = Date.now();
       onPlayerStateChange(newState);
   }, [onPlayerStateChange]);
@@ -114,17 +113,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     if (!canControl || !isPlayerReady.current || !duration) return;
     let currentTime = 0;
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') currentTime = ytPlayerRef.current.getCurrentTime();
-        else if (htmlPlayerRef.current) currentTime = htmlPlayerRef.current.currentTime;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+            currentTime = ytPlayerRef.current.getCurrentTime();
+        } else if (htmlPlayerRef.current) {
+            currentTime = htmlPlayerRef.current.currentTime;
+        }
     } catch(e) {}
     
     const newTime = Math.max(0, Math.min(duration, currentTime + amount));
     isSeekingRef.current = true;
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true);
-        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
-        triggerFeedback(amount > 0 ? 'forward' : 'backward');
-    } catch (e) { isSeekingRef.current = false; return; }
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+            ytPlayerRef.current.seekTo(newTime, true);
+            triggerFeedback(amount > 0 ? 'forward' : 'backward');
+        } else if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.currentTime = newTime;
+            triggerFeedback(amount > 0 ? 'forward' : 'backward');
+        }
+    } catch (e) { 
+        isSeekingRef.current = false; 
+        return; 
+    }
     
     setProgress(newTime);
     handlePlayerStateChangeWithGuard({ seekTime: newTime });
@@ -161,8 +170,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setVolume(vol);
     setCachedState('global', 'volume', vol);
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') ytPlayerRef.current.setVolume(vol * 100);
-        else if (htmlPlayerRef.current) htmlPlayerRef.current.volume = vol;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+            ytPlayerRef.current.setVolume(vol * 100);
+        } else if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.volume = vol;
+        }
     } catch (e) {}
   }, []);
   
@@ -177,8 +189,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
     setProgress(newTime);
     isSeekingRef.current = true;
     try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, false);
-        else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+            ytPlayerRef.current.seekTo(newTime, false);
+        } else if (htmlPlayerRef.current) {
+            htmlPlayerRef.current.currentTime = newTime;
+        }
     } catch (e) {}
   }, [canControl]);
   
@@ -186,8 +201,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
       if (!canControl || !isPlayerReady.current) return;
       const newTime = value[0];
       try { 
-          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') ytPlayerRef.current.seekTo(newTime, true); 
-          else if (htmlPlayerRef.current) htmlPlayerRef.current.currentTime = newTime;
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+              ytPlayerRef.current.seekTo(newTime, true); 
+          } else if (htmlPlayerRef.current) {
+              htmlPlayerRef.current.currentTime = newTime;
+          }
       } catch(e) {}
       handlePlayerStateChangeWithGuard({ seekTime: newTime });
       setTimeout(() => { isSeekingRef.current = false; }, 200);
@@ -206,7 +224,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         localPlayer = ytPlayerRef.current;
         if (typeof localPlayer.getPlayerState !== 'function' || typeof localPlayer.getCurrentTime !== 'function') return;
         const ytState = localPlayer.getPlayerState();
-        if (ytState === 3 || ytState === -1) { isBufferingRef.current = (ytState === 3); return; }
+        if (ytState === 3 || ytState === -1) { 
+            isBufferingRef.current = (ytState === 3); 
+            return; 
+        }
         currentPlayerTime = localPlayer.getCurrentTime();
       } else if (htmlPlayerRef.current && urlType === 'direct') {
         localPlayer = htmlPlayerRef.current;
@@ -217,22 +238,27 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
     if (!duration || duration === 0) {
         try {
-            if (urlType === 'youtube' && typeof localPlayer.getDuration === 'function') setDuration(localPlayer.getDuration());
-            else if (urlType === 'direct') setDuration(localPlayer.duration);
+            if (urlType === 'youtube' && typeof localPlayer.getDuration === 'function') {
+                setDuration(localPlayer.getDuration());
+            } else if (urlType === 'direct') {
+                setDuration(localPlayer.duration);
+            }
         } catch(e) {}
     }
 
     const serverTimeNow = getServerTimeNow();
     const serverTime = (playerState.seekTime || 0) + (playerState.isPlaying ? (serverTimeNow - (playerState.timestamp || serverTimeNow)) / 1000 : 0);
     
-    if (duration > 0 && serverTime > duration + 5) { if (canControl) onVideoEnded(); return; }
+    if (duration > 0 && serverTime > duration + 5) { 
+        if (canControl) onVideoEnded(); 
+        return; 
+    }
     
     const timeDifference = serverTime - currentPlayerTime;
     const absDifference = Math.abs(timeDifference);
 
     try {
       isInternalUpdate.current = true;
-      // عتبة أعلى قليلاً في البداية لضمان الاستقرار
       const syncThreshold = (currentPlayerTime < 5) ? 3.5 : 2.5;
 
       if (absDifference > syncThreshold) { 
@@ -262,17 +288,25 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
 
       if (urlType === 'youtube') {
         const ytState = localPlayer.getPlayerState();
-        if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { if (typeof localPlayer.playVideo === 'function') localPlayer.playVideo(); }
-        else if (!playerState.isPlaying && ytState === 1) { if (typeof localPlayer.pauseVideo === 'function') localPlayer.pauseVideo(); }
+        if (playerState.isPlaying && ytState !== 1 && ytState !== 3) { 
+            if (typeof localPlayer.playVideo === 'function') localPlayer.playVideo(); 
+        } else if (!playerState.isPlaying && ytState === 1) { 
+            if (typeof localPlayer.pauseVideo === 'function') localPlayer.pauseVideo(); 
+        }
       } else {
         if (playerState.isPlaying && localPlayer.paused) localPlayer.play().catch(() => {});
         else if (!playerState.isPlaying && !localPlayer.paused) localPlayer.pause();
       }
       setTimeout(() => { isInternalUpdate.current = false; }, 500);
-    } catch (e) { isInternalUpdate.current = false; }
+    } catch (e) { 
+        isInternalUpdate.current = false; 
+    }
   }, [playerState, duration, urlType, getServerTimeNow, canControl, onVideoEnded]);
 
-  useEffect(() => { isPlayerReady.current = false; ytPlayerRef.current = null; }, [videoId, quality]);
+  useEffect(() => { 
+      isPlayerReady.current = false; 
+      ytPlayerRef.current = null; 
+  }, [videoId, quality]);
 
   useEffect(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
@@ -315,10 +349,12 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [playerState, duration, getServerTimeNow]);
 
   const onYtReady = useCallback((event: { target: YouTubePlayer }) => {
-    ytPlayerRef.current = event.target;
-    isPlayerReady.current = true;
-    if (typeof event.target.getDuration === 'function') setDuration(event.target.getDuration());
-    if (typeof event.target.setVolume === 'function') event.target.setVolume(volume * 100);
+    try {
+        ytPlayerRef.current = event.target;
+        isPlayerReady.current = true;
+        if (typeof event.target.getDuration === 'function') setDuration(event.target.getDuration());
+        if (typeof event.target.setVolume === 'function') event.target.setVolume(volume * 100);
+    } catch(e) {}
   }, [volume]);
 
   const onYtStateChange = useCallback((event: { data: number }) => {
@@ -327,8 +363,11 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
         if (typeof ytPlayerRef.current.getCurrentTime !== 'function') return;
         const currentTime = ytPlayerRef.current.getCurrentTime();
         isBufferingRef.current = (event.data === 3);
-        if (event.data === 1) { if (!playerState?.isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: true, seekTime: currentTime }); }
-        else if (event.data === 2) { if (playerState?.isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: false, seekTime: currentTime }); }
+        if (event.data === 1) { 
+            if (!playerState?.isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: true, seekTime: currentTime }); 
+        } else if (event.data === 2) { 
+            if (playerState?.isPlaying) handlePlayerStateChangeWithGuard({ isPlaying: false, seekTime: currentTime }); 
+        }
     } catch(e) {}
   }, [canControl, playerState?.isPlaying, handlePlayerStateChangeWithGuard]);
 
@@ -346,7 +385,10 @@ const Player = ({ videoUrl, onSetVideo, canControl, onSearchClick, playerState, 
   }, [canControl, playerState?.isPlaying, handlePlayerStateChangeWithGuard]);
 
   const handlePlayerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (urlType === 'empty' || urlType === 'iframe') { if(canControl) onSearchClick(); return; }
+    if (urlType === 'empty' || urlType === 'iframe') { 
+        if(canControl) onSearchClick(); 
+        return; 
+    }
     const now = Date.now();
     const clickX = e.clientX;
     const { left, width } = e.currentTarget.getBoundingClientRect();
