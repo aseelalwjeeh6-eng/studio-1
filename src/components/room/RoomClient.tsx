@@ -150,9 +150,9 @@ const RoomHeader = ({
                                 <Video className="me-2" /> مكالمة فيديو
                             </DropdownMenuItem>
                         )}
-                        <DropdownMenuMenuItem onClick={onLeaveRoom} className="text-destructive">
+                        <DropdownMenuItem onClick={onLeaveRoom} className="text-destructive">
                             <LogOut className="me-2" /> مغادرة الغرفة
-                        </DropdownMenuMenuItem>
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
