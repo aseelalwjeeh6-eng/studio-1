@@ -10,7 +10,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle } from 'lucide-react';
+import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle, Shield, Globe, Image as ImageIcon, Lock } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -31,6 +31,9 @@ import GiftShopDialog from './GiftShopDialog';
 import GiftAnimationOverlay from './GiftAnimationOverlay';
 import { Gifts } from '@/lib/gifts';
 import { getCachedState, setCachedState } from '@/lib/cache-utils';
+import { Switch } from '../ui/switch';
+import { Label } from '../ui/label';
+import { ScrollArea } from '../ui/scroll-area';
 
 export type Member = { 
   name: string;
@@ -115,12 +118,12 @@ const RoomHeader = ({
     
     const handleCopy = useCallback(() => {
         if (typeof navigator !== 'undefined' && navigator.clipboard) {
-            navigator.clipboard.writeText(roomId).then(() => {
-                setIsCopied(true);
-                setTimeout(() => setIsCopied(false), 2000);
-            }).catch(err => {
-                console.warn('Clipboard copy failed:', err);
-            });
+            try {
+                navigator.clipboard.writeText(roomId).then(() => {
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                });
+            } catch(e) { console.error("Clipboard failed", e); }
         }
     }, [roomId]);
 
@@ -269,11 +272,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
   const handleLeaveRoom = useCallback(async () => {
     if (!user) { router.push('/lobby'); return; }
     try {
-        goOffline(database);
         const userSeat = membersState.seated.find(m => m.name === user.name);
         if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
         await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-    } catch (e) {}
+        goOffline(database);
+    } catch (e) { console.error("Error leaving room", e); }
     router.push('/lobby');
   }, [user, roomId, membersState.seated, router]);
   
@@ -349,6 +352,11 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             setVideoState(prev => ({ ...prev, mode: val }));
         });
 
+        subscribe(`rooms/${roomId}/isPrivate`, snap => {
+            const val = snap.val() || false;
+            setRoomBasicInfo(prev => ({ ...prev, isPrivate: val }));
+        });
+
         subscribe(`rooms/${roomId}/giftStream`, snap => {
             if (snap.exists()) {
                 const allGifts = Object.values(snap.val());
@@ -411,7 +419,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         seekTime: startTime, 
         timestamp: serverTimestamp(),
         volume: playerState?.volume ?? 0.8, 
-        quality: playerState?.quality ?? 'auto',
+        quality: 'auto',
         playbackRate: playerState?.playbackRate ?? 1
       };
       update(ref(database), updates).catch(() => {});
@@ -491,6 +499,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         <div className="hidden"><AudioConference /></div>
     
     <GiftShopDialog isOpen={dialogs.giftShop} onOpenChange={(o) => setDialogs(p => ({...p, giftShop: o}))} recipientName={giftData.target} onSendGift={async (r, g) => { try { await sendGift(user.name, r, g, roomId); const gift = Gifts.find(x => x.id === g); if(gift) sendSystemMessage(`🎁 ${user.name} أرسل ${gift.name} إلى ${r}`); } catch(e) {} }} seatedMembers={membersState.seated} />
+    
     <Dialog open={dialogs.invite} onOpenChange={(o) => setDialogs(p => ({...p, invite: o}))}>
         <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>دعوة أصدقاء</DialogTitle></DialogHeader>
@@ -516,37 +525,81 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
             </div>
         </DialogContent>
     </Dialog>
+
     <Dialog open={dialogs.settings} onOpenChange={(o) => setDialogs(p => ({...p, settings: o}))}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-                <DialogTitle>إعدادات الغرفة</DialogTitle>
-                <DialogDescription>تعديل اسم الغرفة أو كلمة المرور.</DialogDescription>
+                <DialogTitle className="flex items-center gap-2"><Settings className="text-accent" /> إعدادات الغرفة</DialogTitle>
+                <DialogDescription>تخصيص كامل لهوية وخصوصية الغرفة.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-6 py-4">
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">اسم الغرفة</label>
+                    <Label className="flex items-center gap-2"><Shield className="w-4 h-4" /> اسم الغرفة</Label>
                     <Input 
                         value={roomBasicInfo.name} 
                         onChange={(e) => update(ref(database, `rooms/${roomId}`), { name: e.target.value })}
                         placeholder="أدخل اسم الغرفة..."
+                        className="bg-input"
                     />
                 </div>
-                <div className="space-y-2">
-                    <label className="text-sm font-medium">كلمة مرور الغرفة (4 أرقام)</label>
-                    <Input 
-                        type="text"
-                        maxLength={4}
-                        value={roomPassword || ''} 
-                        onChange={(e) => update(ref(database, `rooms/${roomId}`), { password: e.target.value.replace(/\D/g, '') })}
-                        placeholder="اتركه فارغاً للإلغاء"
-                    />
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <Label className="flex items-center gap-2"><Lock className="w-4 h-4" /> كلمة المرور (4 أرقام)</Label>
+                        <Input 
+                            type="text"
+                            maxLength={4}
+                            value={roomPassword || ''} 
+                            onChange={(e) => update(ref(database, `rooms/${roomId}`), { password: e.target.value.replace(/\D/g, '') })}
+                            placeholder="بدون كلمة مرور"
+                            className="bg-input text-center font-mono"
+                        />
+                    </div>
+                    <div className="flex flex-col justify-center space-y-2">
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border">
+                            <div className="flex items-center gap-2">
+                                <Globe className="w-4 h-4" />
+                                <Label className="cursor-pointer" htmlFor="privacy-mode">غرفة خاصة</Label>
+                            </div>
+                            <Switch 
+                                id="privacy-mode"
+                                checked={roomBasicInfo.isPrivate}
+                                onCheckedChange={(val) => update(ref(database, `rooms/${roomId}`), { isPrivate: val })}
+                            />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground px-1">الغرفة الخاصة لا تظهر في الردهة العامة.</p>
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <Label className="flex items-center gap-2"><ImageIcon className="w-4 h-4" /> خلفية الغرفة</Label>
+                    <ScrollArea className="h-48 border rounded-lg p-2 bg-secondary/10">
+                        <div className="grid grid-cols-3 gap-2">
+                            <div 
+                                onClick={() => update(ref(database, `rooms/${roomId}`), { backgroundUrl: null })}
+                                className={cn("aspect-video rounded border-2 border-dashed flex items-center justify-center cursor-pointer hover:bg-secondary/30", !roomBasicInfo.background && "border-accent bg-accent/10")}
+                            >
+                                <span className="text-xs">بدون خلفية</span>
+                            </div>
+                            {PlaceHolderImages.filter(p => p.id.startsWith('room-bg')).map(img => (
+                                <div 
+                                    key={img.id}
+                                    onClick={() => update(ref(database, `rooms/${roomId}`), { backgroundUrl: img.imageUrl })}
+                                    className={cn("relative aspect-video rounded overflow-hidden cursor-pointer border-2 transition-all", roomBasicInfo.background === img.imageUrl ? "border-accent ring-2 ring-accent/50" : "border-transparent opacity-70 hover:opacity-100")}
+                                >
+                                    <Image src={img.imageUrl} alt="BG" fill className="object-cover" />
+                                </div>
+                            ))}
+                        </div>
+                    </ScrollArea>
                 </div>
             </div>
             <DialogFooter>
-                <Button onClick={() => setDialogs(p => ({...p, settings: false}))}>إغلاق</Button>
+                <Button onClick={() => setDialogs(p => ({...p, settings: false}))} className="w-full">حفظ وإغلاق</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
+
     <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={(v) => onSetVideo(v)} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({...p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={dialogs.search} onOpenChange={(o) => setDialogs(p => ({...p, search: o}))}><DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0"><DialogHeader className="p-6 pb-4 border-b"><DialogTitle>البحث عن فيديو</DialogTitle></DialogHeader><div className="p-6 flex gap-4"><form onSubmit={(e) => { e.preventDefault(); performSearch(search.query); }} className="flex-1 flex gap-2"><Input placeholder="يوتيوب..." value={search.query} onChange={(e) => setSearch(p => ({...p, query: e.target.value}))} className="bg-input" /><Button type="submit">{search.isSearching ? <Loader2 className="animate-spin" /> : <Search />}</Button></form></div><div className="flex-grow overflow-y-auto px-6 pb-6">{search.results.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{search.results.map(v => <div key={v.id.videoId} className="group cursor-pointer" onClick={() => setPreview(p => ({...p, video: v}))}><div className="relative aspect-video rounded-lg overflow-hidden mb-2"><Image src={v.snippet.thumbnails.high.url} alt="V" fill className="object-cover" /></div><h3 className="font-semibold text-sm line-clamp-2">{v.snippet.title}</h3><Button onClick={(e) => { e.stopPropagation(); try { const newItem: PlaylistItem = { id: v.id.videoId, videoId: v.id.videoId, title: v.snippet.title, thumbnail: v.snippet.thumbnails.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(prev => ({ ...prev, recentlyAdded: new Set(prev.recentlyAdded).add(v.id.videoId) })); setTimeout(() => setPreview(prev => { const n = new Set(prev.recentlyAdded); n.delete(v.id.videoId); return { ...prev, recentlyAdded: n }; }), 2000); } catch(e) {} }} variant="secondary" size="sm" className="w-full mt-2">{preview.recentlyAdded.has(v.id.videoId) ? "تمت الإضافة" : "إضافة للقائمة"}</Button></div>)}</div>}</div></DialogContent></Dialog>
     {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => { try { const newItem: PlaylistItem = { id: preview.video!.id.videoId, videoId: preview.video!.id.videoId, title: preview.video!.snippet.title, thumbnail: preview.video!.snippet.thumbnails.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(p => ({ ...p, video: null })); } catch(e) {} }} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...p, video: null})); setDialogs(p => ({...p, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
