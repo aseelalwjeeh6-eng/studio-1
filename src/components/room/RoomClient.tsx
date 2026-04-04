@@ -10,7 +10,7 @@ import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle, Shield, Globe, Image as ImageIcon, Lock } from 'lucide-react';
+import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle, Shield, Globe, Image as ImageIcon, Lock, Unlock, Key } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -122,8 +122,8 @@ const RoomHeader = ({
                 navigator.clipboard.writeText(roomId).then(() => {
                     setIsCopied(true);
                     setTimeout(() => setIsCopied(false), 2000);
-                });
-            } catch(e) { console.error("Clipboard failed", e); }
+                }).catch(() => {});
+            } catch(e) {}
         }
     }, [roomId]);
 
@@ -275,7 +275,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         const userSeat = membersState.seated.find(m => m.name === user.name);
         if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
         await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-        goOffline(database);
     } catch (e) { console.error("Error leaving room", e); }
     router.push('/lobby');
   }, [user, roomId, membersState.seated, router]);
@@ -543,19 +542,45 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     />
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                        <Label className="flex items-center gap-2"><Lock className="w-4 h-4" /> كلمة المرور (4 أرقام)</Label>
-                        <Input 
-                            type="text"
-                            maxLength={4}
-                            value={roomPassword || ''} 
-                            onChange={(e) => update(ref(database, `rooms/${roomId}`), { password: e.target.value.replace(/\D/g, '') })}
-                            placeholder="بدون كلمة مرور"
-                            className="bg-input text-center font-mono"
-                        />
+                <div className="space-y-4 p-4 border rounded-lg bg-secondary/10">
+                    <Label className="flex items-center gap-2 mb-2"><Key className="w-4 h-4" /> نظام الدخول والخصوصية</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                            variant={!roomPassword ? "default" : "outline"} 
+                            className={cn("w-full", !roomPassword && "bg-green-600 hover:bg-green-700")}
+                            onClick={() => update(ref(database, `rooms/${roomId}`), { password: null })}
+                        >
+                            <Unlock className="me-2 h-4 w-4" /> فتح الغرفة
+                        </Button>
+                        <Button 
+                            variant={roomPassword ? "default" : "outline"} 
+                            className={cn("w-full", roomPassword && "bg-red-600 hover:bg-red-700")}
+                            onClick={() => {
+                                if (!roomPassword) {
+                                    const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+                                    update(ref(database, `rooms/${roomId}`), { password: newPin });
+                                }
+                            }}
+                        >
+                            <Lock className="me-2 h-4 w-4" /> قفل الغرفة
+                        </Button>
                     </div>
-                    <div className="flex flex-col justify-center space-y-2">
+                    
+                    {roomPassword && (
+                        <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label className="text-xs text-muted-foreground">رمز الدخول الحالي (4 أرقام):</Label>
+                            <Input 
+                                type="text"
+                                maxLength={4}
+                                value={roomPassword} 
+                                onChange={(e) => update(ref(database, `rooms/${roomId}`), { password: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                                className="bg-input text-center font-mono text-2xl h-12 tracking-[1rem] focus:ring-red-500"
+                            />
+                            <p className="text-[10px] text-center text-muted-foreground italic">يمكنك تغيير الرمز يدويًا بالأعلى.</p>
+                        </div>
+                    )}
+
+                    <div className="flex flex-col justify-center space-y-2 pt-2">
                         <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border">
                             <div className="flex items-center gap-2">
                                 <Globe className="w-4 h-4" />
