@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -108,7 +109,9 @@ const Player = ({
       });
       triggerFeedback(nextState ? 'play' : 'pause');
       resetControlsTimeout();
-    } catch (e) { console.error("TogglePlay Error:", e); }
+    } catch (e) {
+        console.error("Toggle play error", e);
+    }
   }, [canControl, onPlayerStateChange, getServerTime, resetControlsTimeout, playerState]);
 
   const seekBy = useCallback(async (amount: number) => {
@@ -127,7 +130,7 @@ const Player = ({
       });
       triggerFeedback(amount > 0 ? 'forward' : 'backward');
       resetControlsTimeout();
-    } catch (e) { console.error("Seek Error:", e); }
+    } catch (e) {}
   }, [canControl, duration, onPlayerStateChange, getServerTime, resetControlsTimeout]);
 
   const handleVolumeChange = (val: number[]) => {
@@ -178,7 +181,7 @@ const Player = ({
         const drift = Math.abs(expected - actual);
         const playerStatus = await ytPlayerRef.current.getPlayerState();
 
-        if (playerStatus === 3) return;
+        if (playerStatus === 3) return; // Buffering
 
         if (playerState.isPlaying && playerStatus !== 1 && playerStatus !== 3) {
           try { ytPlayerRef.current.playVideo(); } catch(e) {}
@@ -234,7 +237,6 @@ const Player = ({
   };
 
   const onError = (event: any) => {
-    console.error("YouTube Error:", event.data);
     let msg = "حدث خطأ في تشغيل الفيديو.";
     if (event.data === 101 || event.data === 150) msg = "هذا الفيديو محظور من التشغيل في المواقع الأخرى.";
     if (event.data === 2) msg = "معرف الفيديو غير صحيح.";
@@ -337,14 +339,14 @@ const Player = ({
                         size="icon" 
                         onClick={(e) => { e.stopPropagation(); onSetVideo(''); }}
                         className="text-white hover:text-destructive hover:bg-destructive/20 transition-colors pointer-events-auto"
-                        title="إغلاق الفيديو نهائياً"
+                        title="إغلاق الفيديو"
                     >
                         <XCircle className="w-6 h-6" />
                     </Button>
                 )}
                 <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-[10px] text-white font-bold uppercase tracking-wider">سحابة أصيل متصلة</span>
+                    <span className="text-[10px] text-white font-bold uppercase">متصل</span>
                 </div>
             </div>
           </div>

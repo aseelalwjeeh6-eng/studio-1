@@ -1,16 +1,17 @@
+
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { database } from '@/lib/firebase';
-import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, goOffline, runTransaction, update, push, remove } from 'firebase/database';
+import { ref, onValue, set, onDisconnect, serverTimestamp, get, goOnline, runTransaction, update, push, remove } from 'firebase/database';
 import useUserSession from '@/hooks/use-user-session';
 import Player from './Player';
 import { ChatMessages, ChatInput, ChatHeader } from './Chat';
 import type { Message } from './Chat';
 import ViewerInfo from './ViewerInfo';
 import { Button } from '../ui/button';
-import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle, Shield, Globe, Image as ImageIcon, Lock } from 'lucide-react';
+import { Loader2, MoreVertical, Search, Youtube, LogOut, Video, Film, Users, ListMusic, Settings, Copy, Check, XCircle, Shield, Globe, Image as ImageIcon, Lock, Unlock } from 'lucide-react';
 import { AudioConference, useLiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import LiveKitRoom from './LiveKitRoom';
 import Seats from './Seats';
@@ -74,7 +75,7 @@ const NumericKeypad = ({ pin, onPinChange, pinLength }: { pin: string, onPinChan
                 ))}
             </div>
             <div className="grid grid-cols-3 gap-2">
-                {[...Array(9).keys()].map(i => i + 1).map(num => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
                     <Button key={num} variant="outline" className="w-16 h-16 text-2xl" onClick={() => handleKeyClick(num.toString())}>{num}</Button>
                 ))}
                 <div />
@@ -122,8 +123,8 @@ const RoomHeader = ({
                 navigator.clipboard.writeText(roomId).then(() => {
                     setIsCopied(true);
                     setTimeout(() => setIsCopied(false), 2000);
-                });
-            } catch(e) { console.error("Clipboard failed", e); }
+                }).catch(() => {});
+            } catch(e) {}
         }
     }, [roomId]);
 
@@ -275,7 +276,6 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         const userSeat = membersState.seated.find(m => m.name === user.name);
         if (userSeat) await remove(ref(database, `rooms/${roomId}/seatedMembers/${userSeat.seatId}`));
         await remove(ref(database, `rooms/${roomId}/members/${user.name}`));
-        goOffline(database);
     } catch (e) { console.error("Error leaving room", e); }
     router.push('/lobby');
   }, [user, roomId, membersState.seated, router]);
@@ -543,32 +543,55 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                     />
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                        <Label className="flex items-center gap-2"><Lock className="w-4 h-4" /> كلمة المرور (4 أرقام)</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Button 
+                        variant={roomPassword ? "outline" : "default"}
+                        className={cn("h-16 text-lg flex flex-col gap-1", !roomPassword && "bg-green-600 hover:bg-green-700")}
+                        onClick={() => update(ref(database, `rooms/${roomId}`), { password: null })}
+                    >
+                        <Unlock className="w-5 h-5" />
+                        فتح الغرفة
+                    </Button>
+                    <Button 
+                        variant={roomPassword ? "default" : "outline"}
+                        className={cn("h-16 text-lg flex flex-col gap-1", roomPassword && "bg-red-600 hover:bg-red-700")}
+                        onClick={() => {
+                            if (!roomPassword) {
+                                const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+                                update(ref(database, `rooms/${roomId}`), { password: newPin });
+                            }
+                        }}
+                    >
+                        <Lock className="w-5 h-5" />
+                        قفل الغرفة
+                    </Button>
+                </div>
+
+                {roomPassword && (
+                    <div className="space-y-2 p-4 border-2 border-red-500/20 rounded-lg bg-red-500/5">
+                        <Label className="flex items-center gap-2 text-red-400"><Lock className="w-4 h-4" /> كلمة مرور الغرفة الحالية</Label>
                         <Input 
                             type="text"
                             maxLength={4}
-                            value={roomPassword || ''} 
-                            onChange={(e) => update(ref(database, `rooms/${roomId}`), { password: e.target.value.replace(/\D/g, '') })}
-                            placeholder="بدون كلمة مرور"
-                            className="bg-input text-center font-mono"
+                            value={roomPassword} 
+                            onChange={(e) => update(ref(database, `rooms/${roomId}`), { password: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                            placeholder="أدخل 4 أرقام"
+                            className="bg-input text-center font-mono text-2xl tracking-widest border-red-500/30"
                         />
+                        <p className="text-[10px] text-center text-muted-foreground">يجب أن تتكون من 4 أرقام ليتمكن الآخرون من الدخول.</p>
                     </div>
-                    <div className="flex flex-col justify-center space-y-2">
-                        <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border">
-                            <div className="flex items-center gap-2">
-                                <Globe className="w-4 h-4" />
-                                <Label className="cursor-pointer" htmlFor="privacy-mode">غرفة خاصة</Label>
-                            </div>
-                            <Switch 
-                                id="privacy-mode"
-                                checked={roomBasicInfo.isPrivate}
-                                onCheckedChange={(val) => update(ref(database, `rooms/${roomId}`), { isPrivate: val })}
-                            />
-                        </div>
-                        <p className="text-[10px] text-muted-foreground px-1">الغرفة الخاصة لا تظهر في الردهة العامة.</p>
+                )}
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border">
+                    <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4" />
+                        <Label className="cursor-pointer" htmlFor="privacy-mode">غرفة خاصة (مخفية)</Label>
                     </div>
+                    <Switch 
+                        id="privacy-mode"
+                        checked={roomBasicInfo.isPrivate}
+                        onCheckedChange={(val) => update(ref(database, `rooms/${roomId}`), { isPrivate: val })}
+                    />
                 </div>
 
                 <div className="space-y-3">
@@ -579,7 +602,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
                                 onClick={() => update(ref(database, `rooms/${roomId}`), { backgroundUrl: null })}
                                 className={cn("aspect-video rounded border-2 border-dashed flex items-center justify-center cursor-pointer hover:bg-secondary/30", !roomBasicInfo.background && "border-accent bg-accent/10")}
                             >
-                                <span className="text-xs">بدون خلفية</span>
+                                <span className="text-xs">بدون</span>
                             </div>
                             {PlaceHolderImages.filter(p => p.id.startsWith('room-bg')).map(img => (
                                 <div 
@@ -600,7 +623,7 @@ const RoomLayout = ({ roomId, user, sendSystemMessage, roomPassword, onCorrectPa
         </DialogContent>
     </Dialog>
 
-    <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={(v) => onSetVideo(v)} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({...p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialogs.playlist} onOpenChange={(o) => setDialogs(p => ({...p, playlist: o}))}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>قائمة التشغيل</DialogTitle></DialogHeader><Playlist items={videoState.playlist} canControl={canControl} onPlay={(v) => onSetVideo(v)} onRemove={(id) => remove(ref(database, `rooms/${roomId}/playlist/${btoa(id)}`))} currentVideoUrl={videoState.url} /><DialogFooter><Button variant="outline" onClick={() => setDialogs(p => ({p, playlist: false}))}>إغلاق</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={dialogs.search} onOpenChange={(o) => setDialogs(p => ({...p, search: o}))}><DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0"><DialogHeader className="p-6 pb-4 border-b"><DialogTitle>البحث عن فيديو</DialogTitle></DialogHeader><div className="p-6 flex gap-4"><form onSubmit={(e) => { e.preventDefault(); performSearch(search.query); }} className="flex-1 flex gap-2"><Input placeholder="يوتيوب..." value={search.query} onChange={(e) => setSearch(p => ({...p, query: e.target.value}))} className="bg-input" /><Button type="submit">{search.isSearching ? <Loader2 className="animate-spin" /> : <Search />}</Button></form></div><div className="flex-grow overflow-y-auto px-6 pb-6">{search.results.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{search.results.map(v => <div key={v.id.videoId} className="group cursor-pointer" onClick={() => setPreview(p => ({...p, video: v}))}><div className="relative aspect-video rounded-lg overflow-hidden mb-2"><Image src={v.snippet.thumbnails.high.url} alt="V" fill className="object-cover" /></div><h3 className="font-semibold text-sm line-clamp-2">{v.snippet.title}</h3><Button onClick={(e) => { e.stopPropagation(); try { const newItem: PlaylistItem = { id: v.id.videoId, videoId: v.id.videoId, title: v.snippet.title, thumbnail: v.snippet.thumbnails.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(prev => ({ ...prev, recentlyAdded: new Set(prev.recentlyAdded).add(v.id.videoId) })); setTimeout(() => setPreview(prev => { const n = new Set(prev.recentlyAdded); n.delete(v.id.videoId); return { ...prev, recentlyAdded: n }; }), 2000); } catch(e) {} }} variant="secondary" size="sm" className="w-full mt-2">{preview.recentlyAdded.has(v.id.videoId) ? "تمت الإضافة" : "إضافة للقائمة"}</Button></div>)}</div>}</div></DialogContent></Dialog>
     {preview.video && <Dialog open={true} onOpenChange={() => setPreview(p => ({...p, video: null}))}><DialogContent className="max-w-4xl w-full"><DialogHeader><DialogTitle>{preview.video.snippet.title}</DialogTitle></DialogHeader><div className="aspect-video bg-black rounded-lg overflow-hidden"><YouTube videoId={preview.video.id.videoId} opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1 } }} onReady={e => previewPlayerRef.current = e.target} className="w-full h-full" /></div><div className="flex gap-2"><Button onClick={() => { try { const newItem: PlaylistItem = { id: preview.video!.id.videoId, videoId: preview.video!.id.videoId, title: preview.video!.snippet.title, thumbnail: preview.video!.snippet.thumbnails.high.url }; set(ref(database, `rooms/${roomId}/playlist/${btoa(newItem.id)}`), newItem); setPreview(p => ({ ...p, video: null })); } catch(e) {} }} variant="secondary" className="w-full">إضافة للقائمة</Button><Button onClick={() => { onSetVideo(preview.video!.id.videoId, previewPlayerRef.current?.getCurrentTime() || 0, preview.video!); setPreview(p => ({...p, video: null})); setDialogs(p => ({...p, search: false})); }} className="w-full">عرض الآن</Button></div></DialogContent></Dialog>}
 </div>
@@ -661,9 +684,6 @@ const RoomClient = ({ roomId }: { roomId: string }) => {
             const mRef = ref(database, `rooms/${roomId}/members/${user.name}`);
             set(mRef, { name: user.name, avatarId: user.avatarId || 'avatar1', joinedAt: serverTimestamp() });
             onDisconnect(mRef).remove();
-            const pRef = ref(database, `presence/${user.name}`);
-            set(pRef, { status: 'online', lastChanged: serverTimestamp() });
-            onDisconnect(pRef).set({ status: 'offline', lastChanged: serverTimestamp() });
           }
         });
 
